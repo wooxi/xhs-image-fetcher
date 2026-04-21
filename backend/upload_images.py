@@ -23,8 +23,8 @@ import time
 import json
 import base64
 import tempfile
-import websocket  # 使用 websocket-client 库（更稳定）
 import requests
+import websockets.sync.client as ws_client
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
@@ -40,8 +40,8 @@ LSKY_PRO_TOKEN = os.getenv("LSKY_PRO_TOKEN", "")
 TEMP_DIR = Path(os.getenv("TEMP_DIR", "/tmp/xhs_images"))
 
 # CDP 配置（用于下载小红书图片）
-CDP_HOST = os.getenv("CDP_HOST", "127.0.0.1")
-CDP_PORT = int(os.getenv("CDP_PORT", "9222"))
+CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
+CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
 
 # 小红书 CDN 域名列表
 XHS_CDN_DOMAINS = [
@@ -127,7 +127,7 @@ def connect_to_cdp_url(host: str = CDP_HOST, port: int = CDP_PORT, create_new: b
 
 def connect_to_cdp(host: str = CDP_HOST, port: int = CDP_PORT, create_new: bool = True) -> Any:
     """连接到 CDP 浏览器。
-    
+
     Args:
         host: CDP 主机地址
         port: CDP 端口
@@ -137,113 +137,382 @@ def connect_to_cdp(host: str = CDP_HOST, port: int = CDP_PORT, create_new: bool 
     return websocket.create_connection(ws_url, timeout=10)
 
 
+def get_image_urls_from_detail_page(note_url: str, timeout: float = 60.0) -> list:
+    """从帖子详情页获取所有图片链接。
+
+    通过 DOM 定位获取图片，支持多种 XPath 和 CSS 选择器策略。
+
+    Args:
+        note_url: 帖子详情页 URL
+        timeout: 超时时间
+
+    Returns:
+        图片 URL 列表
+    """
+    ws = None
+    msg_id = 0
+
+    try:
+        print(f"[upload_images] 从详情页获取图片链接: {note_url}")
+
+        # 获取现有页面
+        base_url = f"http://{CDP_HOST}:{CDP_PORT}"
+        resp = requests.get(f"{base_url}/json", timeout=10)
+        resp.raise_for_status()
+        pages = resp.json()
+
+        # 找一个可用的 page（优先找小红书页面）
+        ws_url = None
+        for page in pages:
+            if page.get("type") == "page" and page.get("webSocketDebuggerUrl"):
+                url = page.get("url", "")
+                if "xiaohongshu.com" in url:
+                    ws_url = page.get("webSocketDebuggerUrl")
+                    print(f"[CDP] 使用小红书页面: {url[:60]}...")
+                    break
+
+        if not ws_url:
+            for page in pages:
+                if page.get("type") == "page" and page.get("webSocketDebuggerUrl"):
+                    ws_url = page.get("webSocketDebuggerUrl")
+                    break
+
+        if not ws_url:
+            raise CDPError("没有可用的 CDP 页面")
+
+        ws = ws_client.connect(ws_url)
+        print(f"[CDP] WebSocket 连接成功")
+
+        def send_cdp(method: str, params: dict = None) -> dict:
+            nonlocal msg_id
+            msg_id += 1
+            msg = {"id": msg_id, "method": method}
+            if params:
+                msg["params"] = params
+            ws.send(json.dumps(msg))
+
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                try:
+                    remaining = max(0.1, deadline - time.monotonic())
+                    raw = ws.recv(timeout=remaining)
+                    data = json.loads(raw)
+                    if data.get("id") == msg_id:
+                        if "error" in data:
+                            raise CDPError(f"CDP 错误: {data['error']}")
+                        return data.get("result", {})
+                except TimeoutError:
+                    continue
+            raise CDPError(f"超时: {method}")
+
+        send_cdp("Page.enable")
+
+        # 检查当前页面 URL
+        current_url_result = send_cdp("Runtime.evaluate", {
+            "expression": "window.location.href",
+            "returnByValue": True
+        })
+        current_url = current_url_result.get("result", {}).get("value", "")
+
+        is_image_page = "sns-webpic" in current_url or "xhscdn.com" in current_url
+        is_target_page = note_url in current_url or current_url.startswith(note_url)
+
+        if is_image_page or not is_target_page:
+            print(f"[CDP] 导航到详情页 (当前: {current_url[:50]}...)")
+            send_cdp("Page.navigate", {"url": note_url})
+            time.sleep(4.0)
+            send_cdp("Runtime.evaluate", {
+                "expression": "document.readyState",
+                "returnByValue": True
+            })
+            time.sleep(1.0)
+
+        # 滚动触发懒加载
+        print(f"[CDP] 滚动页面触发懒加载...")
+        send_cdp("Runtime.evaluate", {
+            "expression": "window.scrollTo(0, document.body.scrollHeight / 2)"
+        })
+        time.sleep(1.5)
+        send_cdp("Runtime.evaluate", {
+            "expression": "window.scrollTo(0, document.body.scrollHeight)"
+        })
+        time.sleep(1.5)
+        send_cdp("Runtime.evaluate", {
+            "expression": "window.scrollTo(0, 0)"
+        })
+        time.sleep(0.5)
+
+        # 从 DOM 获取图片链接
+        print(f"[CDP] 从 DOM 获取图片链接...")
+        result = send_cdp("Runtime.evaluate", {
+            "expression": """
+            (() => {
+                let mainImages = [];
+                let recommendedImages = [];
+
+                function extractImgSrc(img) {
+                    let src = img.getAttribute('data-src');
+                    if (!src) src = img.getAttribute('src');
+                    if (!src) {
+                        const style = img.getAttribute('style') || '';
+                        const match = style.match(/url\\(['"]?(https?:[^'")]+)['"]?\\)/);
+                        if (match) src = match[1];
+                    }
+                    return src;
+                }
+
+                function isXhsImage(src) {
+                    if (!src) return false;
+                    return src.includes('sns-webpic') || src.includes('xhscdn.com');
+                }
+
+                function isValidImage(src) {
+                    if (!isXhsImage(src)) return false;
+                    if (src.includes('avatar')) return false;
+                    if (src.includes('icon')) return false;
+                    if (src.includes('logo')) return false;
+                    return true;
+                }
+
+                // 策略1: 用户指定的 XPath
+                const xpath1 = '/html/body/div[5]/div[1]/div[2]/div/div/div[2]/div/div[2]/div/div/img';
+                let xpathResult = document.evaluate(xpath1, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                for (let i = 0; i < xpathResult.snapshotLength; i++) {
+                    const src = extractImgSrc(xpathResult.snapshotItem(i));
+                    if (isValidImage(src) && !mainImages.includes(src)) mainImages.push(src);
+                }
+
+                // 策略2: 多种 XPath
+                if (mainImages.length === 0) {
+                    const xpaths = [
+                        '//div[contains(@class, "swiper-wrapper")]//img',
+                        '//div[contains(@class, "swiper-slide")]//img',
+                        '//div[contains(@class, "carousel")]//img',
+                        '//div[contains(@class, "note-content")]//img',
+                        '//div[contains(@class, "noteContainer")]//img'
+                    ];
+                    for (const xp of xpaths) {
+                        if (mainImages.length > 0) break;
+                        xpathResult = document.evaluate(xp, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        for (let i = 0; i < xpathResult.snapshotLength; i++) {
+                            const src = extractImgSrc(xpathResult.snapshotItem(i));
+                            if (isValidImage(src) && !mainImages.includes(src)) mainImages.push(src);
+                        }
+                    }
+                }
+
+                // 策略3: CSS 选择器
+                if (mainImages.length === 0) {
+                    const selectors = [
+                        '.swiper-wrapper img', '.swiper-slide img',
+                        '.carousel-item img', '.note-content img',
+                        '[class*="swiper-wrapper"] img', '[class*="swiper-slide"] img',
+                        '[class*="noteContainer"] img', '[class*="imageContainer"] img'
+                    ];
+                    for (const sel of selectors) {
+                        if (mainImages.length > 0) break;
+                        const imgs = document.querySelectorAll(sel);
+                        imgs.forEach(img => {
+                            const src = extractImgSrc(img);
+                            if (isValidImage(src) && !mainImages.includes(src)) {
+                                const w = img.naturalWidth || img.width || 0;
+                                const h = img.naturalHeight || img.height || 0;
+                                if (w > 100 || h > 100) mainImages.push(src);
+                            }
+                        });
+                    }
+                }
+
+                // 策略4: 按位置区分
+                if (mainImages.length === 0) {
+                    const allImgs = document.querySelectorAll('img');
+                    allImgs.forEach(img => {
+                        const src = extractImgSrc(img);
+                        if (!isValidImage(src)) return;
+                        const rect = img.getBoundingClientRect();
+                        const centerX = rect.left + rect.width / 2;
+                        const pageWidth = window.innerWidth;
+                        if (centerX < pageWidth * 0.4 && rect.width > 100 && rect.height > 100) {
+                            if (!mainImages.includes(src)) mainImages.push(src);
+                        } else if (centerX > pageWidth * 0.5) {
+                            if (!recommendedImages.includes(src)) recommendedImages.push(src);
+                        }
+                    });
+                }
+
+                if (mainImages.length === 0 && recommendedImages.length > 0) {
+                    mainImages = recommendedImages.slice(0, 9);
+                }
+
+                if (mainImages.length === 0) {
+                    const allImgs = document.querySelectorAll('img');
+                    let imgWithSize = [];
+                    allImgs.forEach(img => {
+                        const src = extractImgSrc(img);
+                        if (isValidImage(src)) {
+                            const rect = img.getBoundingClientRect();
+                            imgWithSize.push({
+                                src: src,
+                                width: rect.width || img.naturalWidth || 0,
+                                height: rect.height || img.naturalHeight || 0
+                            });
+                        }
+                    });
+                    imgWithSize.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+                    mainImages = imgWithSize.slice(0, 9).map(i => i.src);
+                }
+
+                mainImages = mainImages.map(src => {
+                    if (src.includes('http') && src.indexOf('http') > 0) {
+                        src = src.substring(src.indexOf('http'));
+                    }
+                    return src;
+                });
+
+                return mainImages;
+            })()
+            """,
+            "returnByValue": True
+        })
+
+        images = result.get("result", {}).get("value", [])
+        print(f"[CDP] 找到 {len(images)} 张图片")
+        if images:
+            for i, img in enumerate(images[:3]):
+                print(f"[CDP] 图片 {i+1}: {img[:80]}...")
+
+        ws.close()
+        return images
+
+    except Exception as e:
+        print(f"[upload_images] 获取图片链接失败: {e}")
+        if ws:
+            try:
+                ws.close()
+            except:
+                pass
+        return []
+
+
 def download_image_via_cdp(image_url: str, timeout: float = 30.0, max_retries: int = 2) -> bytes:
     """使用 CDP 浏览器下载图片（绕过防盗链）。
-    
-    简化方法：创建新页面，导航到图片 URL，截图获取图片。
-    
+
+    高效方法：启用 Network 监听，导航到图片 URL，通过 Network.getResponseBody 获取图片数据。
+    无需截图，直接获取原始图片二进制数据。
+
     Args:
         image_url: 图片 URL
         timeout: 下载超时时间
         max_retries: 最大重试次数
-        
+
     Returns:
         图片二进制数据
     """
     ws = None
     msg_id = 0
-    
+
     for retry in range(max_retries):
         try:
             print(f"[upload_images] 通过 CDP 下载图片 (尝试 {retry+1}/{max_retries}): {image_url[:80]}...")
-            
-            # 连接到 CDP 浏览器（创建新页面）
-            ws_url = connect_to_cdp_url(create_new=True)
-            ws = websocket.create_connection(ws_url, timeout=10)
+
+            base_url = f"http://{CDP_HOST}:{CDP_PORT}"
+            resp = requests.get(f"{base_url}/json", timeout=10)
+            resp.raise_for_status()
+            pages = resp.json()
+
+            ws_url = None
+            for page in pages:
+                if page.get("type") == "page" and page.get("webSocketDebuggerUrl"):
+                    ws_url = page.get("webSocketDebuggerUrl")
+                    break
+
+            if not ws_url:
+                raise CDPError("没有可用的 CDP 页面")
+
+            ws = ws_client.connect(ws_url)
             print(f"[CDP] WebSocket 连接成功")
-            
+
+            image_request_id = None
+
             def send_cdp(method: str, params: dict = None) -> dict:
                 """发送 CDP 命令。"""
-                nonlocal msg_id
+                nonlocal msg_id, image_request_id
                 msg_id += 1
                 msg = {"id": msg_id, "method": method}
                 if params:
                     msg["params"] = params
                 ws.send(json.dumps(msg))
-                
-                # 等待响应
-                while True:
+
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
                     try:
-                        raw = ws.recv()
+                        remaining = max(0.1, deadline - time.monotonic())
+                        raw = ws.recv(timeout=remaining)
                         data = json.loads(raw)
+
+                        if "method" in data and data["method"] == "Network.responseReceived":
+                            evt_params = data.get("params", {})
+                            resp_url = evt_params.get("response", {}).get("url", "")
+                            rid = evt_params.get("requestId")
+                            if image_url in resp_url or (resp_url and "xhscdn.com" in resp_url):
+                                image_request_id = rid
+                                print(f"[CDP] 发现图片请求: requestId={rid}")
+
                         if data.get("id") == msg_id:
                             if "error" in data:
                                 raise CDPError(f"CDP 错误: {data['error']}")
                             return data.get("result", {})
-                    except websocket.WebSocketTimeoutException:
-                        raise CDPError(f"等待 CDP 响应超时: {method}")
-            
-            # 等待页面初始化
-            time.sleep(0.5)
-            
-            # 导航到图片 URL
+
+                    except TimeoutError:
+                        continue
+
+                raise CDPError(f"等待 CDP 响应超时: {method}")
+
+            print(f"[CDP] 启用 Network 监听...")
+            send_cdp("Network.enable")
+            send_cdp("Page.enable")
+
             print(f"[CDP] 导航到图片 URL...")
-            result = send_cdp("Page.navigate", {"url": image_url})
-            
-            # 等待页面加载
-            time.sleep(2.0)
-            
-            # 获取视口大小
-            result = send_cdp("Page.getLayoutMetrics")
-            content_size = result.get("contentSize", {})
-            width = int(content_size.get("width", 800))
-            height = int(content_size.get("height", 600))
-            print(f"[CDP] 页面大小: {width}x{height}")
-            
-            # 截图
-            result = send_cdp("Page.captureScreenshot", {
-                "format": "png",
-                "clip": {
-                    "x": 0, "y": 0,
-                    "width": width, "height": height,
-                    "scale": 1
-                }
-            })
-            
-            screenshot_data = result.get("data", "")
-            if screenshot_data:
-                image_bytes = base64.b64decode(screenshot_data)
-                print(f"[CDP] 截图成功！大小: {len(image_bytes)} bytes ({len(image_bytes)/1024:.1f} KB)")
-                return image_bytes
-            
+            send_cdp("Page.navigate", {"url": image_url})
+
+            time.sleep(1.0)
+
+            if image_request_id:
+                print(f"[CDP] 获取图片数据: requestId={image_request_id}")
+                result = send_cdp("Network.getResponseBody", {"requestId": image_request_id})
+
+                body = result.get("body", "")
+                base64_encoded = result.get("base64Encoded", False)
+
+                if body:
+                    if base64_encoded:
+                        image_bytes = base64.b64decode(body)
+                    else:
+                        image_bytes = body.encode("utf-8") if isinstance(body, str) else body
+
+                    print(f"[CDP] 获取成功！大小: {len(image_bytes)} bytes ({len(image_bytes)/1024:.1f} KB)")
+                    return image_bytes
+
             raise CDPError("无法获取图片数据")
-            
+
         except CDPError as e:
             print(f"[upload_images] CDP 下载失败 (尝试 {retry+1}/{max_retries}): {e}")
-            if ws:
-                try:
-                    ws.close()
-                except Exception:
-                    pass
-                ws = None
-            if retry < max_retries - 1:
-                time.sleep(2.0)
-                continue
-            raise
-        
+
         except Exception as e:
             print(f"[upload_images] CDP 异常: {e}")
+
+        finally:
             if ws:
                 try:
                     ws.close()
                 except Exception:
                     pass
                 ws = None
+
             if retry < max_retries - 1:
-                time.sleep(2.0)
+                time.sleep(1.0)
                 continue
-            raise CDPError(f"CDP 下载失败: {e}")
-    
+
     raise CDPError("CDP 下载失败：超过最大重试次数")
 
 

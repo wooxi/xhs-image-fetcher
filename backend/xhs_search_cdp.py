@@ -7,12 +7,13 @@
 4. check-login: 检查浏览器登录状态
 
 前置条件：
-- Chrome/Chromium 浏览器已启动并开启远程调试端口（默认 9222）
+- Chrome/Chromium 浏览器已启动并开启远程调试端口（默认 9224）
 - 浏览器中已登录小红书账号
 
 输出: JSON 格式
 """
 
+import os
 import argparse
 import json
 import sys
@@ -23,15 +24,17 @@ from typing import Any, Optional
 from pathlib import Path
 from urllib.parse import urlencode
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import requests
 import websockets.sync.client as ws_client
 
-# 输出文件目录
 OUTPUT_DIR = Path("/tmp/xhs_search")
 
-# CDP 配置
-CDP_HOST = "127.0.0.1"
-CDP_PORT = 9222
+CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
+CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
 
 # URL 常量
 SEARCH_BASE_URL = "https://www.xiaohongshu.com/search_result"
