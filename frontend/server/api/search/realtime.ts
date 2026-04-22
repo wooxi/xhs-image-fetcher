@@ -72,14 +72,15 @@ export default defineEventHandler(async (event) => {
     }
     searchTasks.set(taskId, task)
 
-    // 启动后台搜索进程
+    // 启动后台搜索进程（使用venv中的Python）
     const scriptPath = '/xhs-project/backend/main.py'
+    const pythonPath = '/xhs-project/backend/venv/bin/python'
     const args = ['search-detail', keyword, '--limit', String(limit)]
     if (uploadImages) {
       args.push('--upload-images')
     }
 
-    const child = spawn('python3', [scriptPath, ...args], {
+    const child = spawn(pythonPath, [scriptPath, ...args], {
       cwd: '/xhs-project/backend',
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
       stdio: ['ignore', 'pipe', 'pipe']

@@ -33,9 +33,10 @@ export default defineEventHandler(async (event) => {
     )
     await connection.end()
     
-    // 执行搜索脚本（后台运行）
+    // 执行搜索脚本（后台运行，使用venv中的Python）
     const scriptPath = '/xhs-project/backend/main.py'
-    const child = spawn('python3', [scriptPath, 'search', keyword, '--limit', String(limit)], {
+    const pythonPath = '/xhs-project/backend/venv/bin/python'
+    const child = spawn(pythonPath, [scriptPath, 'search', keyword, '--limit', String(limit)], {
       cwd: '/xhs-project/backend',
       env: process.env,
       detached: true,
