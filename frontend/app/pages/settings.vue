@@ -1,46 +1,46 @@
 <template>
-  <div class="min-h-screen bg-xhs-bg">
+  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
     <Head>
       <meta name="referrer" content="no-referrer" />
     </Head>
-    
-    <!-- 顶部导航 -->
-    <header class="sticky top-0 bg-white shadow-sm z-50">
-      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+
+    <!-- 顶部导航 - 更精美 -->
+    <header class="sticky top-0 bg-white/95 backdrop-blur-sm shadow-sm z-50 border-b border-gray-100">
+      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
         <div class="flex items-center gap-4">
-          <button 
+          <button
             @click="$router.push('/')"
-            class="flex items-center gap-2 text-gray-600 hover:text-xhs-red transition"
+            class="flex items-center gap-2 text-gray-600 hover:text-xhs-red hover:bg-gray-50 px-3 py-2 rounded-xl transition-all"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            <span>返回首页</span>
+            <span class="font-medium">返回首页</span>
           </button>
         </div>
-        
-        <!-- Tab 切换 -->
+
+        <!-- Tab 切换 - 更精美 -->
         <div class="flex gap-2">
           <button
             @click="activeTab = 'keywords'"
-            :class="activeTab === 'keywords' ? 'bg-xhs-red text-white' : 'bg-gray-100 text-gray-600'"
-            class="px-4 py-2 rounded-lg transition"
+            :class="activeTab === 'keywords' ? 'bg-xhs-red text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+            class="px-5 py-2.5 rounded-xl transition-all font-medium"
           >
-            搜索词
+            搜索词管理
           </button>
           <button
             @click="activeTab = 'logs'; refreshLogs()"
-            :class="activeTab === 'logs' ? 'bg-xhs-red text-white' : 'bg-gray-100 text-gray-600'"
-            class="px-4 py-2 rounded-lg transition"
+            :class="activeTab === 'logs' ? 'bg-xhs-red text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+            class="px-5 py-2.5 rounded-xl transition-all font-medium"
           >
             执行日志
           </button>
         </div>
-        
-        <button 
+
+        <button
           v-show="activeTab === 'keywords'"
           @click="showAddModal = true"
-          class="px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2"
+          class="px-5 py-2.5 bg-xhs-red text-white rounded-xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex items-center gap-2 font-medium"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -80,84 +80,97 @@
           </button>
         </div>
 
-        <!-- 搜索词列表 -->
+        <!-- 搜索词列表 - 更精美 -->
         <div v-else class="grid gap-4">
-        <div 
-          v-for="kw in keywords" 
-          :key="kw.id"
-          class="bg-white rounded-lg shadow-sm p-4 flex items-center justify-between hover:shadow-md transition"
-        >
-          <!-- 关键词信息 -->
-          <div class="flex items-center gap-4">
-            <!-- 状态标识 -->
-            <div 
-              class="w-3 h-3 rounded-full"
-              :class="kw.status === 'active' ? 'bg-green-500' : 'bg-gray-300'"
-            ></div>
-            
-            <!-- 关键词文本 -->
-            <div>
-              <h3 class="text-lg font-medium text-gray-800">{{ kw.keyword }}</h3>
-              <p class="text-sm text-gray-500 mt-1">
-                <span v-if="kw.auto_search">
-                  自动搜索 · 每 {{ formatInterval(kw.search_interval) }}
+          <div
+            v-for="kw in keywords"
+            :key="kw.id"
+            class="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between hover:shadow-lg transition-all duration-300 border border-gray-100"
+          >
+            <!-- 关键词信息 -->
+            <div class="flex items-center gap-4">
+              <!-- 状态标识 - 更精美 -->
+              <div class="relative">
+                <div
+                  class="w-10 h-10 rounded-xl flex items-center justify-center"
+                  :class="kw.status === 'active' ? 'bg-green-100' : 'bg-gray-100'"
+                >
+                  <svg class="w-5 h-5" :class="kw.status === 'active' ? 'text-green-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <!-- 自动搜索指示器 -->
+                <div
+                  v-if="kw.auto_search"
+                  class="absolute -top-1 -right-1 w-3 h-3 bg-xhs-red rounded-full animate-pulse"
+                ></div>
+              </div>
+
+              <!-- 关键词文本 -->
+              <div>
+                <h3 class="text-lg font-semibold text-gray-900">{{ kw.keyword }}</h3>
+                <div class="flex items-center gap-2 mt-1 text-sm">
+                  <span v-if="kw.auto_search" class="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    每 {{ formatInterval(kw.search_interval) }}
+                  </span>
+                  <span v-else class="text-gray-400">手动搜索</span>
                   <span v-if="kw.last_search_time" class="text-gray-400">
                     · 上次: {{ formatTime(kw.last_search_time) }}
                   </span>
-                </span>
-                <span v-else class="text-gray-400">手动搜索</span>
-              </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex items-center gap-2">
+              <!-- 自动搜索开关 - 更精美 -->
+              <button
+                @click="toggleAutoSearch(kw)"
+                :class="kw.auto_search
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                class="px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-2 font-medium"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ kw.auto_search ? '已开启' : '开启自动' }}
+              </button>
+
+            <!-- 手动搜索 - 更精美 -->
+              <button
+                @click="triggerSearch(kw)"
+                :disabled="searchingKeywords.includes(kw.keyword)"
+                class="px-4 py-2 bg-xhs-red text-white rounded-xl text-sm hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-2 font-medium shadow-sm hover:shadow-md"
+              >
+                <svg
+                  :class="searchingKeywords.includes(kw.keyword) ? 'animate-spin' : ''"
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
+              </button>
+
+              <!-- 删除 - 更精美 -->
+              <button
+                @click="confirmDelete(kw)"
+                class="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-sm hover:bg-red-100 transition-all flex items-center gap-2 font-medium"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                删除
+              </button>
             </div>
           </div>
-
-          <!-- 操作按钮 -->
-          <div class="flex items-center gap-2">
-            <!-- 自动搜索开关 -->
-            <button 
-              @click="toggleAutoSearch(kw)"
-              :class="kw.auto_search 
-                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-              class="px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              {{ kw.auto_search ? '已开启' : '开启自动' }}
-            </button>
-
-            <!-- 手动搜索 -->
-            <button 
-              @click="triggerSearch(kw)"
-              :disabled="searchingKeywords.includes(kw.keyword)"
-              class="px-3 py-1.5 bg-xhs-red text-white rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-1"
-            >
-              <svg 
-                :class="searchingKeywords.includes(kw.keyword) ? 'animate-spin' : ''"
-                class="w-4 h-4" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-              </svg>
-              {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
-            </button>
-
-            <!-- 删除 -->
-            <button 
-              @click="confirmDelete(kw)"
-              class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100 transition flex items-center gap-1"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-              删除
-            </button>
-          </div>
         </div>
-      </div>
       </div>
 
       <!-- 日志 Tab -->
@@ -183,53 +196,65 @@
           <p class="text-sm text-gray-400">执行搜索后会自动记录日志</p>
         </div>
 
-        <!-- 日志列表 -->
+        <!-- 日志列表 - 更精美 -->
         <div v-else class="space-y-4">
           <!-- 日志卡片 -->
-          <div 
-            v-for="log in logs" 
+          <div
+            v-for="log in logs"
             :key="log.id"
-            class="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition"
+            class="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300 border border-gray-100"
           >
             <!-- 头部：关键词和时间 -->
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-3">
-                <span class="px-2 py-1 bg-xhs-red/10 text-xhs-red rounded text-sm font-medium">
+                <span class="px-3 py-1.5 bg-xhs-red/10 text-xhs-red rounded-lg text-sm font-semibold">
                   {{ log.keyword }}
                 </span>
-                <span 
+                <span
                   v-if="log.error_message"
-                  class="px-2 py-1 bg-red-100 text-red-600 rounded text-sm"
+                  class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-sm flex items-center gap-1"
                 >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
+                  </svg>
                   错误
                 </span>
+                <span
+                  v-else
+                  class="px-3 py-1.5 bg-green-100 text-green-600 rounded-lg text-sm flex items-center gap-1"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  成功
+                </span>
               </div>
-              <span class="text-sm text-gray-400">
+              <span class="text-sm text-gray-400 bg-gray-50 px-2 py-1 rounded">
                 {{ formatLogTime(log.created_at) }}
               </span>
             </div>
 
-            <!-- 统计数据 -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <!-- 统计数据 - 更精美 -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
               <!-- 帖子统计 -->
-              <div class="bg-gray-50 rounded-lg p-3">
+              <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 text-center">
                 <div class="text-2xl font-bold text-gray-800">{{ log.posts_found }}</div>
-                <div class="text-xs text-gray-500">发现帖子</div>
+                <div class="text-xs text-gray-500 mt-1">发现帖子</div>
               </div>
               <!-- 入库统计 -->
-              <div class="bg-green-50 rounded-lg p-3">
+              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center">
                 <div class="text-2xl font-bold text-green-600">{{ log.posts_inserted }}</div>
-                <div class="text-xs text-gray-500">成功入库</div>
+                <div class="text-xs text-green-600/70 mt-1">成功入库</div>
               </div>
               <!-- 图片上传 -->
-              <div class="bg-blue-50 rounded-lg p-3">
+              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 text-center">
                 <div class="text-2xl font-bold text-blue-600">{{ log.images_uploaded }}</div>
-                <div class="text-xs text-gray-500">图片上传</div>
+                <div class="text-xs text-blue-600/70 mt-1">图片上传</div>
               </div>
               <!-- 耗时 -->
-              <div class="bg-orange-50 rounded-lg p-3">
+              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 text-center">
                 <div class="text-2xl font-bold text-orange-600">{{ log.duration_seconds }}s</div>
-                <div class="text-xs text-gray-500">执行耗时</div>
+                <div class="text-xs text-orange-600/70 mt-1">执行耗时</div>
               </div>
             </div>
 

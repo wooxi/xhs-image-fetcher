@@ -1,37 +1,53 @@
 <template>
-  <div class="min-h-screen bg-xhs-bg">
+  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
     <!-- 防盗链：设置 meta referrer -->
     <Head>
       <meta name="referrer" content="no-referrer" />
     </Head>
+
     <!-- 顶部搜索栏 -->
-    <header class="sticky top-0 bg-white shadow-sm z-50">
-      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-        <h1 class="text-xl font-bold text-xhs-red">摄影灵感库</h1>
+    <header class="sticky top-0 bg-white/95 backdrop-blur-sm shadow-sm z-50 border-b border-gray-100">
+      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-xhs-red rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h1 class="text-xl font-bold text-gray-900 tracking-tight">摄影灵感库</h1>
+        </div>
         <div class="flex items-center gap-4">
-          <input 
-            v-model="searchKeyword"
-            type="text" 
-            placeholder="搜索关键词..."
-            class="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-xhs-red w-64"
-            @keyup.enter="searchPosts"
-          />
-          <button 
+          <div class="relative">
+            <input
+              v-model="searchKeyword"
+              type="text"
+              placeholder="搜索关键词..."
+              class="pl-10 pr-4 py-2.5 w-64 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-xhs-red/30 focus:border-xhs-red transition-all"
+              @keyup.enter="searchPosts"
+            />
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <button
             @click="searchPosts"
-            class="px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition"
+            class="px-5 py-2.5 bg-xhs-red text-white rounded-xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex items-center gap-2"
           >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
             搜索
           </button>
           <!-- 设置入口 -->
-          <button 
+          <button
             @click="$router.push('/settings')"
-            class="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-xhs-red transition"
+            class="flex items-center gap-2 px-4 py-2.5 text-gray-600 hover:text-xhs-red hover:bg-gray-50 rounded-xl transition-all"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
-            <span class="hidden sm:inline">设置</span>
+            <span class="hidden sm:inline font-medium">设置</span>
           </button>
         </div>
       </div>
@@ -39,9 +55,21 @@
 
     <!-- 瀑布流内容 -->
     <main class="max-w-7xl mx-auto px-4 py-6">
-      <!-- 加载状态 -->
-      <div v-if="pending" class="flex justify-center py-20">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-xhs-red"></div>
+      <!-- 加载状态 - 骨架屏 -->
+      <div v-if="pending" class="columns-1 sm:columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+        <div v-for="i in 12" :key="i" class="bg-white rounded-xl shadow-sm overflow-hidden break-inside-avoid">
+          <!-- 骨架图片 -->
+          <div class="w-full h-48 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 animate-pulse rounded-xl"></div>
+          <!-- 骨架文本 -->
+          <div class="p-4 space-y-3">
+            <div class="h-4 bg-gray-100 rounded animate-pulse w-3/4"></div>
+            <div class="h-3 bg-gray-100 rounded animate-pulse w-1/2"></div>
+            <div class="flex justify-between">
+              <div class="h-3 bg-gray-100 rounded animate-pulse w-1/4"></div>
+              <div class="h-3 bg-gray-100 rounded animate-pulse w-1/3"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 错误状态 -->
@@ -50,76 +78,85 @@
       </div>
 
       <!-- 内容展示 -->
-      <div v-else class="columns-1 sm:columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-4">
-        <div 
-          v-for="post in posts" 
+      <div v-else class="columns-1 sm:columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+        <div
+          v-for="post in posts"
           :key="post.id"
-          class="masonry-card bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+          class="masonry-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group break-inside-avoid"
           @click="openPostModal(post)"
         >
           <!-- 主图 -->
           <div class="relative overflow-hidden">
-            <img 
+            <img
               v-if="post.images && post.images.length > 0"
-              :src="post.images[0]" 
+              :src="post.images[0]"
               :alt="post.title"
-              class="w-full h-auto object-cover transition-transform duration-300 hover:scale-105"
+              class="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-500"
               loading="lazy"
             />
-            <!-- 多图指示器 -->
-            <div 
+            <!-- 多图指示器 - 更精美 -->
+            <div
               v-if="post.images && post.images.length > 1"
-              class="absolute bottom-2 right-2 bg-black/60 text-white px-2 py-1 rounded text-xs"
+              class="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-gray-800 px-2.5 py-1 rounded-full text-xs font-medium shadow-sm flex items-center gap-1"
             >
-              {{ post.images.length }} 图
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+              {{ post.images.length }}
             </div>
-            <div 
-              v-else 
-              class="w-full h-48 bg-gray-200 flex items-center justify-center"
+            <!-- 无图占位 - 更精美 -->
+            <div
+              v-else
+              class="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center"
             >
-              <span class="text-gray-400">暂无图片</span>
+              <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
             </div>
           </div>
 
-          <!-- 卡片信息 -->
-          <div class="p-3">
+          <!-- 卡片信息 - 更精美 -->
+          <div class="p-4">
             <!-- 标题 -->
-            <h3 class="text-sm font-medium text-gray-800 line-clamp-2 leading-snug">
+            <h3 class="text-sm font-semibold text-gray-800 line-clamp-2 leading-snug mb-3 group-hover:text-xhs-red transition-colors">
               {{ post.title }}
             </h3>
 
-            <!-- 作者和互动数据 -->
-            <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
-              <span class="flex items-center gap-1">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <!-- 作者信息 -->
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center">
+                <svg class="w-3 h-3 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
                 </svg>
-                {{ post.author_name }}
-              </span>
-              
+              </div>
+              <span class="text-xs text-gray-500">{{ post.author_name }}</span>
+            </div>
+
+            <!-- 互动数据 -->
+            <div class="flex items-center justify-between text-xs text-gray-400">
               <div class="flex items-center gap-3">
                 <!-- 点赞 -->
-                <span class="flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <span class="flex items-center gap-1 hover:text-red-500 transition-colors">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
                   </svg>
                   {{ formatNumber(post.likes) }}
                 </span>
                 <!-- 收藏 -->
-                <span class="flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <span class="flex items-center gap-1 hover:text-yellow-500 transition-colors">
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                   </svg>
                   {{ formatNumber(post.collects) }}
                 </span>
-                <!-- 评论 -->
-                <span class="flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/>
-                  </svg>
-                  {{ formatNumber(post.comments) }}
-                </span>
               </div>
+              <!-- 评论 -->
+              <span class="flex items-center gap-1">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/>
+                </svg>
+                {{ formatNumber(post.comments) }}
+              </span>
             </div>
           </div>
         </div>
