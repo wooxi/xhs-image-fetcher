@@ -16,8 +16,11 @@ import time
 import random
 import math
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
+
+# 使用 Any 类型避免类型检查问题
+ws_connection_type = Any
 
 import websockets.sync.client as ws_client
 
@@ -128,7 +131,7 @@ def bezier_curve_points(start: Tuple[float, float], end: Tuple[float, float],
     return points
 
 
-def simulate_mouse_movement(ws: ws_client.WebSocketClientConnection,
+def simulate_mouse_movement(ws: ws_connection_type,
                             start: Tuple[float, float], end: Tuple[float, float],
                             msg_id_counter: List[int] = None) -> None:
     """通过CDP模拟鼠标移动。
@@ -170,7 +173,7 @@ def simulate_mouse_movement(ws: ws_client.WebSocketClientConnection,
         time.sleep(step_time)
 
 
-def simulate_scroll(ws: ws_client.WebSocketClientConnection,
+def simulate_scroll(ws: ws_connection_type,
                     direction: str = "down", amount: int = None,
                     msg_id_counter: List[int] = None) -> None:
     """模拟人类式滚动。
@@ -220,7 +223,7 @@ def simulate_scroll(ws: ws_client.WebSocketClientConnection,
     time.sleep(pause)
 
 
-def simulate_reading_scroll(ws: ws_client.WebSocketClientConnection,
+def simulate_reading_scroll(ws: ws_connection_type,
                             total_scroll: int = 800,
                             msg_id_counter: List[int] = None) -> None:
     """模拟阅读式滚动（多次小滚动，随机暂停）。
@@ -250,7 +253,7 @@ def simulate_reading_scroll(ws: ws_client.WebSocketClientConnection,
             time.sleep(pause)
 
 
-def simulate_typing(ws: ws_client.WebSocketClientConnection,
+def simulate_typing(ws: ws_connection_type,
                     selector: str, text: str,
                     msg_id_counter: List[int] = None) -> None:
     """模拟人类打字速度。
@@ -319,7 +322,7 @@ def simulate_typing(ws: ws_client.WebSocketClientConnection,
             time.sleep(HumanBehaviorConfig.TYPING_THINK_DURATION)
 
 
-def smart_wait_for_load(ws: ws_client.WebSocketClientConnection,
+def smart_wait_for_load(ws: ws_connection_type,
                         timeout: float = None,
                         msg_id_counter: List[int] = None) -> bool:
     """智能等待页面加载完成（基于状态而非固定时间）。
@@ -425,7 +428,7 @@ class SessionManager:
         self.cookie_file = cache_dir / "cookies.json"
         self.meta_file = cache_dir / "session_meta.json"
 
-    def save_cookies(self, ws: ws_client.WebSocketClientConnection,
+    def save_cookies(self, ws: ws_connection_type,
                      msg_id_counter: List[int] = None) -> bool:
         """保存当前会话的Cookies。
 
@@ -483,7 +486,7 @@ class SessionManager:
             print(f"[session] 保存Cookies失败: {e}")
             return False
 
-    def load_cookies(self, ws: ws_client.WebSocketClientConnection,
+    def load_cookies(self, ws: ws_connection_type,
                      msg_id_counter: List[int] = None) -> bool:
         """加载之前保存的Cookies。
 
@@ -571,12 +574,12 @@ class SessionManager:
 class HumanBehaviorSimulator:
     """人类行为模拟器 - 整合所有模拟功能。"""
 
-    def __init__(self, ws: ws_client.WebSocketClientConnection = None):
+    def __init__(self, ws: ws_connection_type = None):
         self.ws = ws
         self.msg_id_counter = [0]
         self.session_manager = SessionManager()
 
-    def set_ws(self, ws: ws_client.WebSocketClientConnection) -> None:
+    def set_ws(self, ws: ws_connection_type) -> None:
         """设置WebSocket连接。"""
         self.ws = ws
 
@@ -666,7 +669,7 @@ class HumanBehaviorSimulator:
 
 
 # 便捷函数
-def create_human_simulator(ws: ws_client.WebSocketClientConnection) -> HumanBehaviorSimulator:
+def create_human_simulator(ws: ws_connection_type) -> HumanBehaviorSimulator:
     """创建人类行为模拟器。"""
     return HumanBehaviorSimulator(ws)
 
