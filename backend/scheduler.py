@@ -33,11 +33,12 @@ except ImportError:
     print("[scheduler] 错误: 无法导入 xhs_search_cdp 模块")
     sys.exit(1)
 
-# 导入图片上传模块
+# 导入图片上传模块（新版处理器）
 try:
-    from upload_images import ImageUploader
+    from image_processor import ImageProcessor, ImageProcessorLogger
+    ImageUploader = ImageProcessor  # 兼容别名
 except ImportError:
-    print("[scheduler] 警告: 无法导入 upload_images 模块，图片上传功能不可用")
+    print("[scheduler] 警告: 无法导入 image_processor 模块，图片上传功能不可用")
     ImageUploader = None
 
 
@@ -259,13 +260,15 @@ class XhsScheduler:
         self.task_queue = TaskQueueManager(self.db)
         self.cycle_count = 0
 
-        # 初始化图片上传器
+        # 初始化图片上传器（新版处理器）
         if upload_images and ImageUploader:
             try:
-                self.image_uploader = ImageUploader()
-                print("[scheduler] 图片上传功能已启用")
+                from image_processor import ImageProcessorLogger
+                logger = ImageProcessorLogger()
+                self.image_uploader = ImageProcessor(logger=logger)
+                print("[scheduler] 图片上传功能已启用（新版处理器）")
             except Exception as e:
-                print(f"[scheduler] 图片上传器初始化失败: {e}")
+                print(f"[scheduler] 图片处理器初始化失败: {e}")
                 self.upload_images = False
 
         # 注册信号处理
@@ -327,12 +330,14 @@ class XhsScheduler:
         return now >= next_time
 
     def _process_images_for_note(self, note: Dict[str, Any]) -> Dict[str, Any]:
-        """处理单个帖子的图片，上传到图床。
+        """处理单个帖子的图片，上传到图床（使用新版处理器）。
 
         Returns:
             处理后的帖子数据，包含上传统计
         """
         if not self.image_uploader:
+            note["images_upload_success"] = 0
+            note["images_upload_fail"] = 0
             return note
 
         images = note.get("images", [])
@@ -341,35 +346,10 @@ class XhsScheduler:
             note["images_upload_fail"] = 0
             return note
 
-        print(f"[scheduler] 处理帖子 {note.get('id', '')} 的 {len(images)} 张图片")
+        # 使用新版处理器处理整个帖子的图片
+        processed_note = self.image_uploader.process_images_for_note(note)
 
-        new_images = []
-        upload_success = 0
-        upload_fail = 0
-
-        for i, img_url in enumerate(images):
-            print(f"[scheduler] 上传第 {i+1}/{len(images)} 张图片...")
-
-            result = self.image_uploader.upload_image(img_url)
-
-            if result.get("success"):
-                new_url = result.get("url", "")
-                new_images.append(new_url)
-                upload_success += 1
-            else:
-                # 上传失败，保留原链接
-                new_images.append(img_url)
-                upload_fail += 1
-
-            # 上传间隔
-            if i < len(images) - 1:
-                time.sleep(SchedulerConfig.IMAGE_UPLOAD_DELAY)
-
-        note["images"] = new_images
-        note["images_upload_success"] = upload_success
-        note["images_upload_fail"] = upload_fail
-
-        return note
+        return processed_note
 
     def execute_search(self, keyword: str) -> Dict[str, Any]:
         """执行单次搜索任务。
