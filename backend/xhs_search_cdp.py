@@ -6,6 +6,11 @@
 3. search_detail: 搜索并批量获取详情
 4. check-login: 检查浏览器登录状态
 
+特性：
+- 集成人类行为模拟，防止被检测
+- 智能等待，基于页面状态而非固定时间
+- Cookie持久化，避免重复登录
+
 前置条件：
 - Chrome/Chromium 浏览器已启动并开启远程调试端口（默认 9224）
 - 浏览器中已登录小红书账号
@@ -20,6 +25,7 @@ import sys
 import time
 import base64
 import re
+import random
 from typing import Any, Optional
 from pathlib import Path
 from urllib.parse import urlencode
@@ -30,6 +36,19 @@ load_dotenv()
 
 import requests
 import websockets.sync.client as ws_client
+
+# 导入人类行为模拟模块
+try:
+    from human_behavior import (
+        HumanBehaviorSimulator,
+        SessionManager,
+        random_think_pause,
+        smart_wait_for_load,
+    )
+    HUMAN_BEHAVIOR_ENABLED = True
+except ImportError:
+    print("[xhs_cdp] 警告: 无法导入 human_behavior 模块，人类行为模拟功能不可用")
+    HUMAN_BEHAVIOR_ENABLED = False
 
 OUTPUT_DIR = Path("/tmp/xhs_search")
 
@@ -46,14 +65,24 @@ class CDPError(Exception):
 
 
 class XHSCDPClient:
-    """小红书 CDP 客户端，连接到已部署的 Chrome 浏览器。"""
+    """小红书 CDP 客户端，连接到已部署的 Chrome 浏览器。
 
-    def __init__(self, host: str = CDP_HOST, port: int = CDP_PORT):
+    集成人类行为模拟，防止被检测。
+    """
+
+    def __init__(self, host: str = CDP_HOST, port: int = CDP_PORT, use_human_behavior: bool = True):
         self.host = host
         self.port = port
         self.ws: Optional[ws_client.WebSocketClientConnection] = None
         self._msg_id = 0
         self.target_id: Optional[str] = None
+        self.use_human_behavior = use_human_behavior and HUMAN_BEHAVIOR_ENABLED
+        self.human_simulator: Optional[HumanBehaviorSimulator] = None
+        self.session_manager: Optional[SessionManager] = None
+
+        if self.use_human_behavior:
+            self.session_manager = SessionManager()
+            print("[xhs_cdp] 人类行为模拟已启用")
 
     def _get_targets(self) -> list[dict]:
         """获取浏览器所有 targets（tabs）。"""
@@ -117,8 +146,24 @@ class XHSCDPClient:
         self.ws = ws_client.connect(ws_url)
         print("[xhs_cdp] 已连接")
 
+        # 初始化人类行为模拟器
+        if self.use_human_behavior:
+            self.human_simulator = HumanBehaviorSimulator(self.ws)
+
+            # 尝试加载缓存的会话
+            if self.session_manager and self.session_manager.is_session_valid():
+                print("[xhs_cdp] 发现有有效的缓存会话，尝试加载...")
+                self.session_manager.load_cookies(self.ws)
+
     def disconnect(self):
-        """断开连接。"""
+        """断开连接（保存会话）。"""
+        # 保存会话Cookies（如果有人类行为模块）
+        if self.use_human_behavior and self.session_manager and self.ws:
+            try:
+                self.session_manager.save_cookies(self.ws)
+            except Exception as e:
+                print(f"[xhs_cdp] 保存会话失败: {e}")
+
         if self.ws:
             self.ws.close()
             self.ws = None
@@ -172,11 +217,26 @@ class XHSCDPClient:
         return remote_obj.get("value")
 
     def _navigate(self, url: str, wait_time: float = 3.0):
-        """导航到 URL。"""
+        """导航到 URL（带人类行为模拟）。"""
         print(f"[xhs_cdp] 导航到: {url}")
+
+        # 人类行为模拟：在导航前可能随机移动鼠标
+        if self.use_human_behavior and self.human_simulator:
+            # 随机停顿，模拟"思考"
+            random_think_pause()
+
         self._send("Page.enable")
         self._send("Page.navigate", {"url": url})
-        time.sleep(wait_time)
+
+        # 智能等待加载（而非固定时间）
+        if self.use_human_behavior:
+            # 使用智能等待
+            loaded = self._smart_wait_for_load(timeout=max(wait_time, 30.0))
+            if not loaded:
+                print("[xhs_cdp] 智能等待超时，使用固定等待")
+                time.sleep(wait_time)
+        else:
+            time.sleep(wait_time)
 
     def _wait_for_load(self, timeout: float = 30.0):
         """等待页面加载完成。"""
@@ -236,6 +296,51 @@ class XHSCDPClient:
                 pass
             time.sleep(0.6)
         print("[xhs_cdp] 等待详情数据超时")
+
+    def _smart_wait_for_load(self, timeout: float = 30.0) -> bool:
+        """智能等待页面加载完成（基于状态而非固定时间）。"""
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            try:
+                state = self._evaluate("document.readyState")
+                if state == "complete":
+                    # 添加随机"耐心"等待
+                    if self.use_human_behavior:
+                        patience = random.uniform(0.3, 1.5)
+                        time.sleep(patience)
+                    return True
+            except CDPError:
+                pass
+            time.sleep(0.3)
+
+        return False
+
+    def _simulate_human_browsing(self, duration: float = 2.0):
+        """模拟人类浏览行为（滚动 + 停顿）。
+
+        适用于：进入页面后的自然浏览模拟
+        """
+        if not self.use_human_behavior or not self.human_simulator:
+            return
+
+        # 随机滚动
+        scroll_amount = random.randint(100, 400)
+        try:
+            self._evaluate(f"window.scrollBy(0, {scroll_amount})")
+            time.sleep(random.uniform(0.5, 1.5))
+
+            # 可能回滚
+            if random.random() < 0.3:
+                back_scroll = random.randint(50, 200)
+                self._evaluate(f"window.scrollBy(0, -{back_scroll})")
+                time.sleep(random.uniform(0.3, 0.8))
+
+        except CDPError:
+            pass
+
+        # 随机思考停顿
+        random_think_pause()
 
 
 def make_search_url(keyword: str) -> str:
@@ -538,6 +643,11 @@ def search_notes(keyword: str, limit: int = 10, sort_by: str = "general", save: 
         client._navigate(search_url)
         client._wait_for_load()
         client._wait_for_initial_state()
+
+        # 模拟人类浏览行为（防止被检测）
+        client._simulate_human_browsing()
+
+        # 等待搜索结果
         client._wait_for_search_state()
 
         # 提取搜索结果
@@ -636,6 +746,10 @@ def get_note_detail(note_url: str, xsec_token: str = "") -> dict:
         client._navigate(detail_url, wait_time=5.0)  # 增加等待时间
         client._wait_for_load()
         client._wait_for_initial_state(timeout=30.0)  # 增加超时时间
+
+        # 模拟人类浏览行为（防止被检测）
+        client._simulate_human_browsing(duration=3.0)
+
         client._wait_for_detail_state(timeout=30.0)  # 增加超时时间
 
         # 提取详情数据
