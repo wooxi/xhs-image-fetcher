@@ -193,8 +193,12 @@ class XhsDatabase:
             keyword VARCHAR(100) NOT NULL COMMENT '搜索关键词',
             status VARCHAR(20) DEFAULT 'active' COMMENT '状态(active/paused)',
             auto_search BOOLEAN DEFAULT FALSE COMMENT '是否自动搜索',
-            search_interval INT DEFAULT 0 COMMENT '自动搜索间隔(小时)',
+            search_interval DECIMAL(10,2) DEFAULT 0 COMMENT '自动搜索间隔(支持分钟级别，如0.1=6分钟)',
             last_search_time DATETIME COMMENT '上次搜索时间',
+            priority VARCHAR(10) DEFAULT 'normal' COMMENT '优先级(high/normal/low)',
+            retry_count INT DEFAULT 0 COMMENT '失败重试次数',
+            last_error TEXT COMMENT '最后错误信息',
+            next_search_time DATETIME COMMENT '下次计划搜索时间',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='搜索词配置表';
@@ -431,9 +435,10 @@ class XhsDatabase:
         """获取所有搜索词配置。"""
         query_sql = """
         SELECT id, keyword, status, auto_search, search_interval,
-               last_search_time, created_at, updated_at
+               last_search_time, priority, retry_count, last_error,
+               next_search_time, created_at, updated_at
         FROM keywords
-        ORDER BY created_at DESC
+        ORDER BY priority DESC, created_at DESC
         """
 
         try:
@@ -447,19 +452,30 @@ class XhsDatabase:
             for row in results:
                 if row.get('last_search_time'):
                     row['last_search_time'] = row['last_search_time'].isoformat() if hasattr(row['last_search_time'], 'isoformat') else str(row['last_search_time'])
+                if row.get('next_search_time'):
+                    row['next_search_time'] = row['next_search_time'].isoformat() if hasattr(row['next_search_time'], 'isoformat') else str(row['next_search_time'])
                 if row.get('created_at'):
                     row['created_at'] = row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at'])
                 if row.get('updated_at'):
                     row['updated_at'] = row['updated_at'].isoformat() if hasattr(row['updated_at'], 'isoformat') else str(row['updated_at'])
                 # 转换 auto_search 为 boolean
                 row['auto_search'] = bool(row.get('auto_search', 0))
+                # 确保 search_interval 是 float（分钟级别）
+                if row.get('search_interval'):
+                    row['search_interval'] = float(row['search_interval'])
             return results
         except Error as e:
             print(f"[db] 获取搜索词配置失败: {e}")
             return []
 
-    def add_keyword(self, keyword: str, auto_search: bool = False, search_interval: int = 0) -> Dict[str, Any]:
-        """添加搜索词配置。"""
+    def add_keyword(self, keyword: str, auto_search: bool = False, search_interval: float = 0) -> Dict[str, Any]:
+        """添加搜索词配置。
+
+        Args:
+            keyword: 搜索关键词
+            auto_search: 是否自动搜索
+            search_interval: 搜索间隔（小时，支持小数如0.1=6分钟）
+        """
         insert_sql = """
         INSERT INTO keywords (keyword, auto_search, search_interval)
         VALUES (%s, %s, %s)
@@ -521,8 +537,13 @@ class XhsDatabase:
             print(f"[db] 更新搜索词状态失败: {e}")
             return {"success": False, "error": str(e)}
 
-    def enable_auto_search(self, keyword: str, search_interval: int = 24) -> Dict[str, Any]:
-        """启用自动搜索。"""
+    def enable_auto_search(self, keyword: str, search_interval: float = 24) -> Dict[str, Any]:
+        """启用自动搜索。
+
+        Args:
+            keyword: 搜索关键词
+            search_interval: 搜索间隔（小时，支持小数如0.1=6分钟）
+        """
         update_sql = """
         UPDATE keywords SET auto_search = TRUE, search_interval = %s, status = 'active'
         WHERE keyword = %s
@@ -717,9 +738,11 @@ class XhsDatabase:
     def get_auto_search_keywords(self) -> List[Dict[str, Any]]:
         """获取需要自动搜索的搜索词（auto_search=True 且 status=active）。"""
         query_sql = """
-        SELECT id, keyword, search_interval, last_search_time
+        SELECT id, keyword, search_interval, last_search_time,
+               priority, retry_count, last_error, next_search_time
         FROM keywords
         WHERE auto_search = TRUE AND status = 'active'
+        ORDER BY priority DESC, next_search_time ASC
         """
 
         try:
@@ -729,10 +752,114 @@ class XhsDatabase:
             results = cursor.fetchall()
             cursor.close()
             conn.close()
+            # 转换 datetime 为字符串，并确保 search_interval 是 float
+            for row in results:
+                if row.get('last_search_time'):
+                    row['last_search_time'] = row['last_search_time'].isoformat() if hasattr(row['last_search_time'], 'isoformat') else str(row['last_search_time'])
+                if row.get('next_search_time'):
+                    row['next_search_time'] = row['next_search_time'].isoformat() if hasattr(row['next_search_time'], 'isoformat') else str(row['next_search_time'])
+                if row.get('search_interval'):
+                    row['search_interval'] = float(row['search_interval'])
             return results
         except Error as e:
             print(f"[db] 获取自动搜索词失败: {e}")
             return []
+
+    def update_next_search_time(self, keyword: str, next_time: datetime) -> bool:
+        """更新下次计划搜索时间。"""
+        update_sql = "UPDATE keywords SET next_search_time = %s WHERE keyword = %s"
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(update_sql, (next_time, keyword))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Error as e:
+            print(f"[db] 更新下次搜索时间失败: {e}")
+            return False
+
+    def increment_retry_count(self, keyword: str, error: str = None) -> bool:
+        """增加重试计数并记录错误。"""
+        update_sql = """
+        UPDATE keywords SET retry_count = retry_count + 1, last_error = %s
+        WHERE keyword = %s
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(update_sql, (error, keyword))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Error as e:
+            print(f"[db] 增加重试计数失败: {e}")
+            return False
+
+    def reset_retry_count(self, keyword: str) -> bool:
+        """重置重试计数。"""
+        update_sql = """
+        UPDATE keywords SET retry_count = 0, last_error = NULL
+        WHERE keyword = %s
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(update_sql, (keyword,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Error as e:
+            print(f"[db] 重置重试计数失败: {e}")
+            return False
+
+    def update_keyword_interval(self, keyword: str, search_interval: float) -> Dict[str, Any]:
+        """更新搜索间隔（支持分钟级别）。"""
+        update_sql = "UPDATE keywords SET search_interval = %s WHERE keyword = %s"
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(update_sql, (search_interval, keyword))
+            conn.commit()
+            affected = cursor.rowcount
+            cursor.close()
+            conn.close()
+            if affected > 0:
+                print(f"[db] 已更新搜索间隔: {keyword} -> {search_interval} 小时")
+                return {"success": True, "keyword": keyword, "search_interval": search_interval}
+            else:
+                return {"success": False, "error": "搜索词不存在"}
+        except Error as e:
+            print(f"[db] 更新搜索间隔失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    def update_keyword_priority(self, keyword: str, priority: str) -> Dict[str, Any]:
+        """更新搜索词优先级。"""
+        update_sql = "UPDATE keywords SET priority = %s WHERE keyword = %s"
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(update_sql, (priority, keyword))
+            conn.commit()
+            affected = cursor.rowcount
+            cursor.close()
+            conn.close()
+            if affected > 0:
+                print(f"[db] 已更新优先级: {keyword} -> {priority}")
+                return {"success": True, "keyword": keyword, "priority": priority}
+            else:
+                return {"success": False, "error": "搜索词不存在"}
+        except Error as e:
+            print(f"[db] 更新优先级失败: {e}")
+            return {"success": False, "error": str(e)}
 
 
 def test_connection() -> bool:
