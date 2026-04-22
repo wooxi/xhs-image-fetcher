@@ -39,12 +39,13 @@ except ImportError:
     print("[main] 请确保 xhs_search_cdp.py 在同一目录下")
     sys.exit(1)
 
-# 导入图片上传模块
+# 导入图片上传模块（新版图片处理器）
 try:
-    from upload_images import ImageUploader
+    from image_processor import ImageProcessor, ImageProcessorLogger, process_images_for_notes
 except ImportError:
-    print("[main] 警告: 无法导入 upload_images 模块，图片上传功能不可用")
-    ImageUploader = None
+    print("[main] 警告: 无法导入 image_processor 模块，图片上传功能不可用")
+    ImageProcessor = None
+    process_images_for_notes = None
 
 
 class XhsSearchToDB:
@@ -54,14 +55,16 @@ class XhsSearchToDB:
         self.db = XhsDatabase()
         self.upload_images = upload_images
         self.image_uploader = None
-        
-        # 如果启用图片上传，初始化上传器
-        if upload_images and ImageUploader:
+
+        # 如果启用图片上传，初始化新版图片处理器
+        if upload_images and ImageProcessor:
             try:
-                self.image_uploader = ImageUploader()
-                print("[main] 图片上传功能已启用")
+                from image_processor import ImageProcessorLogger
+                logger = ImageProcessorLogger()
+                self.image_uploader = ImageProcessor(logger=logger)
+                print("[main] 图片上传功能已启用（新版处理器）")
             except Exception as e:
-                print(f"[main] 图片上传器初始化失败: {e}")
+                print(f"[main] 图片处理器初始化失败: {e}")
                 self.upload_images = False
 
     def init(self) -> bool:
@@ -100,54 +103,29 @@ class XhsSearchToDB:
         return result
 
     def _process_images_for_note(self, note: Dict[str, Any]) -> Dict[str, Any]:
-        """处理单个帖子的图片，上传到图床。
-        
+        """处理单个帖子的图片，上传到图床（使用新版处理器）。
+
         Args:
             note: 帖子数据
-            
+
         Returns:
             处理后的帖子数据（images 字段替换为图床链接）
         """
         if not self.image_uploader:
             return note
-        
+
         images = note.get("images", [])
         if not images:
             return note
-        
-        print(f"[main] 处理帖子 {note.get('id', '')} 的 {len(images)} 张图片")
-        
-        new_images = []
-        upload_success = 0
-        upload_fail = 0
-        
-        for i, img_url in enumerate(images):
-            print(f"[main] 上传第 {i+1}/{len(images)} 张图片: {img_url[:50]}...")
-            
-            result = self.image_uploader.upload_image(img_url)
-            
-            if result.get("success"):
-                new_url = result.get("url", "")
-                new_images.append(new_url)
-                upload_success += 1
-                print(f"[main] 上传成功: {new_url}")
-            else:
-                # 上传失败，保留原链接
-                new_images.append(img_url)
-                upload_fail += 1
-                print(f"[main] 上传失败，保留原链接")
-            
-            # 上传间隔
-            if i < len(images) - 1:
-                time.sleep(0.5)
-        
-        # 更新帖子数据
-        note["images"] = new_images
-        note["images_upload_success"] = upload_success
-        note["images_upload_fail"] = upload_fail
-        
-        print(f"[main] 图片上传完成: 成功 {upload_success}, 失败 {upload_fail}")
-        return note
+
+        post_id = note.get("id", "")
+        post_title = note.get("title", "")[:30]
+        print(f"\n[main] ========== 帖子 [{post_id}] \"{post_title}\" 共{len(images)}张图片 ==========")
+
+        # 使用新版图片处理器
+        processed_note = self.image_uploader.process_images_for_note(note)
+
+        return processed_note
     
     def search_detail_and_store(
         self,
