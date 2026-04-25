@@ -1027,11 +1027,20 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
             note_id = note.get("id", "")
             url = note.get("url", "")
             xsec_token = note.get("xsec_token", "")
+            note_type = note.get("type", "")  # 获取帖子类型
 
             # 检查是否已经处理过（防止重复）
             if note_id in seen_note_ids:
                 continue
             seen_note_ids.add(note_id)
+
+            # 跳过视频帖子（只采集图文帖子）
+            if note_type == "video":
+                print(f"[xhs_cdp] 跳过视频帖子: {note_id}")
+                posts_skipped += 1
+                pause = random.uniform(0.3, 0.8)
+                time.sleep(pause)
+                continue
 
             # 去重检查：在获取详情前检查帖子是否已存在数据库
             if skip_existing and db and note_id:
@@ -1059,6 +1068,15 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
                 if detail.get("success", False):
                     combined = {**note, **detail}
                     combined["images"] = detail.get("images", [note.get("cover", "")])
+
+                    # 再次检查：如果获取详情后发现是视频帖子，跳过
+                    if combined.get("type") == "video":
+                        print(f"[xhs_cdp] 跳过视频帖子（详情获取后）: {note_id}")
+                        posts_skipped += 1
+                        pause = random.uniform(0.3, 0.8)
+                        time.sleep(pause)
+                        continue
+
                     detailed_notes.append(combined)
                     posts_new += 1
                     batch_new += 1
