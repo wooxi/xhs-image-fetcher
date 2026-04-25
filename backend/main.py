@@ -133,19 +133,33 @@ class XhsSearchToDB:
         limit: int = 5,
         sort_by: str = "general",
         delay: float = 2.0,
+        skip_existing: bool = True,
     ) -> Dict[str, Any]:
-        """搜索、获取详情并存储到数据库。"""
+        """搜索、获取详情并存储到数据库。
+
+        Args:
+            keyword: 搜索关键词
+            limit: 搜索数量
+            sort_by: 排序方式
+            delay: 请求间隔（秒）
+            skip_existing: 是否跳过已存在的帖子（默认 True）
+        """
         print(f"[main] 搜索并获取详情: {keyword}, 数量: {limit}")
 
-        # 执行搜索和获取详情
-        result = search_and_detail(keyword, limit, delay, sort_by)
+        # 执行搜索和获取详情（传入db实例进行去重）
+        result = search_and_detail(
+            keyword, limit, delay, sort_by,
+            db=self.db,  # 传入数据库实例用于去重检查
+            skip_existing=skip_existing  # 获取详情前跳过已存在的帖子
+        )
 
         if not result.get("success", False):
             print(f"[main] 搜索失败: {result.get('error', '未知错误')}")
             return result
 
         notes = result.get("notes", [])
-        print(f"[main] 获取到 {len(notes)} 条详情")
+        posts_skipped = result.get("posts_skipped", 0)
+        print(f"[main] 获取到 {len(notes)} 条新详情，跳过 {posts_skipped} 条已存在帖子")
         
         # 如果启用图片上传，处理每张图片
         if self.upload_images and self.image_uploader:
@@ -207,7 +221,11 @@ def main():
     sub.add_argument("--sort", "-s", default="general", choices=["general", "popular", "latest"], help="排序方式")
     sub.add_argument("--delay", "-d", type=float, default=2.0, help="请求间隔（秒）")
     sub.add_argument("--upload-images", "-u", action="store_true", help="上传图片到 Lsky Pro 图床")
-    sub.set_defaults(func=lambda a, x: print(json.dumps(x.search_detail_and_store(a.keyword, a.limit, a.sort, a.delay), ensure_ascii=False, indent=2)))
+    sub.add_argument("--skip-existing", action="store_true", default=True, help="跳过已存在的帖子（默认启用）")
+    sub.add_argument("--no-skip", action="store_true", help="不跳过已存在的帖子")
+    sub.set_defaults(func=lambda a, x: print(json.dumps(x.search_detail_and_store(
+        a.keyword, a.limit, a.sort, a.delay, skip_existing=not a.no_skip
+    ), ensure_ascii=False, indent=2)))
 
     # stats 命令
     sub = subparsers.add_parser("stats", help="获取数据库统计")
