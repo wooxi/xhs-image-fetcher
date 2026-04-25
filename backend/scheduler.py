@@ -300,6 +300,12 @@ class XhsScheduler:
         search_interval = keyword_config.get('search_interval', 24)  # 小时（支持小数）
         last_search_time = keyword_config.get('last_search_time')
         next_search_time = keyword_config.get('next_search_time')
+        auto_search = keyword_config.get('auto_search', False)
+
+        # 如果auto_search=True但next_search_time为null，立即执行首次搜索
+        if auto_search and not next_search_time:
+            print(f"[scheduler] 关键词 {keyword_config.get('keyword')} 首次自动搜索")
+            return True
 
         # 如果有预计算的下次搜索时间，直接比较
         if next_search_time:
@@ -307,9 +313,13 @@ class XhsScheduler:
                 try:
                     next_search_time = datetime.fromisoformat(next_search_time)
                 except ValueError:
-                    pass
+                    # 解析失败，立即执行
+                    return True
             if isinstance(next_search_time, datetime):
-                return datetime.now() >= next_search_time
+                should_exec = datetime.now() >= next_search_time
+                if should_exec:
+                    print(f"[scheduler] 到达计划搜索时间: {next_search_time.isoformat()}")
+                return should_exec
 
         # 否则基于上次搜索时间和间隔计算
         if not last_search_time:
@@ -385,12 +395,14 @@ class XhsScheduler:
             base_delay = random.uniform(SchedulerConfig.DETAIL_DELAY_MIN, SchedulerConfig.DETAIL_DELAY_MAX)
             actual_delay = base_delay * delay_factor
 
-            # 执行搜索（获取详情）
+            # 执行搜索（获取详情）- 传入db实例进行去重
             search_result = search_and_detail(
                 keyword,
                 limit=SchedulerConfig.SEARCH_LIMIT,
                 delay=actual_delay,
-                sort_by="general"
+                sort_by="general",
+                db=self.db,  # 传入数据库实例用于去重检查
+                skip_existing=True  # 在获取详情前跳过已存在的帖子
             )
 
             if not search_result.get("success", False):
@@ -403,25 +415,21 @@ class XhsScheduler:
                 return result
 
             notes = search_result.get("notes", [])
-            result["posts_found"] = len(notes)
-            print(f"[scheduler] 搜索到 {len(notes)} 条帖子")
+            result["posts_found"] = search_result.get("posts_found", len(notes))
+            posts_skipped_in_search = search_result.get("posts_skipped", 0)
+            print(f"[scheduler] 搜索到 {result['posts_found']} 条帖子，已跳过 {posts_skipped_in_search} 条重复")
 
-            # 处理每个帖子
+            # 处理每个帖子（已在search_and_detail中去重，这里直接处理）
             for note in notes:
                 note_id = note.get("id", "")
                 note_url = note.get("url", "")
 
-                # 随机等待（防封号）
-                wait_time = random.uniform(SchedulerConfig.DETAIL_DELAY_MIN, SchedulerConfig.DETAIL_DELAY_MAX)
+                # 随机等待（防封号）- 模拟人类浏览行为
+                wait_time = random.uniform(0.3, 1.0)  # 减少等待时间，因为详情获取已有停顿
                 wait_time *= get_peak_delay_factor()  # 高峰时段更慢
-                print(f"[scheduler] 等待 {wait_time:.1f} 秒...")
+                if wait_time > 0.5:
+                    print(f"[scheduler] 等待 {wait_time:.1f} 秒...")
                 time.sleep(wait_time)
-
-                # 检查是否重复
-                if self.db.is_note_exists(note_id=note_id, url=note_url):
-                    print(f"[scheduler] 跳过重复帖子: {note_id}")
-                    result["posts_skipped"] += 1
-                    continue
 
                 # 处理图片上传
                 if self.upload_images:
@@ -555,6 +563,17 @@ class XhsScheduler:
             print(f"[scheduler] 高峰时段: {SchedulerConfig.PEAK_HOURS}")
         print(f"[scheduler] 最大重试次数: {SchedulerConfig.MAX_RETRIES}")
         print(f"[scheduler] 图片上传: {'启用' if self.upload_images else '禁用'}")
+
+        # 初始化缺失的next_search_time
+        print("[scheduler] 检查关键词的next_search_time...")
+        keywords = self.db.get_auto_search_keywords()
+        for kw in keywords:
+            if kw.get('auto_search') and not kw.get('next_search_time'):
+                keyword = kw.get('keyword')
+                search_interval = kw.get('search_interval', 24)
+                next_time = calculate_next_search_time(search_interval, datetime.now())
+                self.db.update_next_search_time(keyword, next_time)
+                print(f"[scheduler] 初始化 {keyword} 的下次搜索时间: {next_time.isoformat()}")
 
         self.running = True
 

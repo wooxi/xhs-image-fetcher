@@ -215,6 +215,8 @@ class XhsDatabase:
 
             # 创建搜索日志表
             self._create_search_logs_table()
+            # 创建执行详细日志表
+            self._create_execution_logs_table()
         except Error as e:
             print(f"[db] 创建数据表失败: {e}")
             raise
@@ -544,22 +546,27 @@ class XhsDatabase:
             keyword: 搜索关键词
             search_interval: 搜索间隔（小时，支持小数如0.1=6分钟）
         """
+        # 计算初始下次搜索时间（立即执行首次搜索）
+        from datetime import datetime, timedelta
+        next_search_time = datetime.now() + timedelta(hours=search_interval)
+
         update_sql = """
-        UPDATE keywords SET auto_search = TRUE, search_interval = %s, status = 'active'
+        UPDATE keywords SET auto_search = TRUE, search_interval = %s, status = 'active',
+               next_search_time = %s, retry_count = 0, last_error = NULL
         WHERE keyword = %s
         """
 
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-            cursor.execute(update_sql, (search_interval, keyword))
+            cursor.execute(update_sql, (search_interval, next_search_time, keyword))
             conn.commit()
             affected = cursor.rowcount
             cursor.close()
             conn.close()
             if affected > 0:
-                print(f"[db] 已启用自动搜索: {keyword}，间隔 {search_interval} 小时")
-                return {"success": True, "keyword": keyword, "auto_search": True, "search_interval": search_interval}
+                print(f"[db] 已启用自动搜索: {keyword}，间隔 {search_interval} 小时，下次搜索: {next_search_time.isoformat()}")
+                return {"success": True, "keyword": keyword, "auto_search": True, "search_interval": search_interval, "next_search_time": next_search_time.isoformat()}
             else:
                 return {"success": False, "error": "搜索词不存在"}
         except Error as e:
@@ -643,6 +650,7 @@ class XhsDatabase:
         create_sql = """
         CREATE TABLE IF NOT EXISTS search_logs (
             id INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+            execution_id VARCHAR(50) COMMENT '执行ID（关联execution_logs）',
             keyword VARCHAR(100) COMMENT '搜索关键词',
             posts_found INT DEFAULT 0 COMMENT '发现的帖子数',
             posts_inserted INT DEFAULT 0 COMMENT '成功入库数',
@@ -652,7 +660,10 @@ class XhsDatabase:
             images_failed INT DEFAULT 0 COMMENT '上传失败的图片数',
             duration_seconds INT DEFAULT 0 COMMENT '执行耗时（秒）',
             error_message TEXT COMMENT '错误信息',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间'
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+            INDEX idx_execution_id (execution_id),
+            INDEX idx_keyword (keyword),
+            INDEX idx_created_at (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='搜索执行日志表';
         """
 
@@ -667,6 +678,194 @@ class XhsDatabase:
             print(f"[db] 创建搜索日志表失败: {e}")
             raise
 
+    def _create_execution_logs_table(self):
+        """创建执行详细日志表。"""
+        create_sql = """
+        CREATE TABLE IF NOT EXISTS execution_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+            execution_id VARCHAR(50) NOT NULL COMMENT '执行ID',
+            keyword VARCHAR(100) COMMENT '搜索关键词',
+            log_type ENUM('info', 'success', 'error', 'image', 'main') DEFAULT 'info' COMMENT '日志类型',
+            message TEXT COMMENT '日志内容',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+            INDEX idx_execution_id (execution_id),
+            INDEX idx_keyword (keyword),
+            INDEX idx_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='执行详细日志表';
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_sql)
+            cursor.close()
+            conn.close()
+            print("[db] 数据表已创建: execution_logs")
+        except Error as e:
+            print(f"[db] 创建执行日志表失败: {e}")
+            raise
+
+    def log_execution_message(
+        self,
+        execution_id: str,
+        keyword: str,
+        log_type: str = 'info',
+        message: str = ''
+    ) -> bool:
+        """记录单条执行日志。
+
+        Args:
+            execution_id: 执行ID（唯一标识一次搜索任务）
+            keyword: 搜索关键词
+            log_type: 日志类型 (info/success/error/image/main)
+            message: 日志内容
+        """
+        insert_sql = """
+        INSERT INTO execution_logs (execution_id, keyword, log_type, message)
+        VALUES (%s, %s, %s, %s)
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(insert_sql, (execution_id, keyword, log_type, message))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Error as e:
+            print(f"[db] 记录执行日志失败: {e}")
+            return False
+
+    def get_execution_logs(self, execution_id: str) -> List[Dict[str, Any]]:
+        """获取某次执行的完整日志。"""
+        query_sql = """
+        SELECT id, execution_id, keyword, log_type, message, created_at
+        FROM execution_logs
+        WHERE execution_id = %s
+        ORDER BY created_at ASC
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(query_sql, (execution_id,))
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            # 转换 datetime
+            for row in results:
+                if row.get('created_at'):
+                    row['created_at'] = row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at'])
+            return results
+        except Error as e:
+            print(f"[db] 获取执行日志失败: {e}")
+            return []
+
+    def get_execution_history(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """分页获取历史执行记录（含详细日志数量）。"""
+        query_sql = """
+        SELECT sl.*,
+               (SELECT COUNT(*) FROM execution_logs WHERE execution_id = sl.execution_id) as log_count
+        FROM search_logs sl
+        ORDER BY sl.created_at DESC
+        LIMIT %s OFFSET %s
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(query_sql, (limit, offset))
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            # 转换 datetime
+            for row in results:
+                if row.get('created_at'):
+                    row['created_at'] = row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at'])
+            return results
+        except Error as e:
+            print(f"[db] 获取历史执行记录失败: {e}")
+            return []
+
+    def get_execution_with_logs(self, execution_id: str) -> Dict[str, Any]:
+        """获取单次执行的完整信息（含统计数据和详细日志）。"""
+        # 获取统计信息
+        summary_sql = """
+        SELECT * FROM search_logs WHERE execution_id = %s LIMIT 1
+        """
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(summary_sql, (execution_id,))
+            summary = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if not summary:
+                return {"success": False, "error": "执行记录不存在"}
+
+            # 转换 datetime
+            if summary.get('created_at'):
+                summary['created_at'] = summary['created_at'].isoformat() if hasattr(summary['created_at'], 'isoformat') else str(summary['created_at'])
+
+            # 获取详细日志
+            logs = self.get_execution_logs(execution_id)
+
+            return {
+                "success": True,
+                "execution_id": execution_id,
+                "summary": summary,
+                "logs": logs
+            }
+        except Error as e:
+            print(f"[db] 获取执行详情失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    def cleanup_old_logs(self, days: int = 30) -> Dict[str, int]:
+        """清理超过指定天数的日志。
+
+        Args:
+            days: 保留天数，默认30天
+
+        Returns:
+            {"execution_logs": deleted_count, "search_logs": deleted_count}
+        """
+        cleanup_execution_sql = """
+        DELETE FROM execution_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL %s DAY)
+        """
+        cleanup_search_sql = """
+        DELETE FROM search_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL %s DAY)
+        """
+
+        result = {"execution_logs": 0, "search_logs": 0}
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # 清理执行日志
+            cursor.execute(cleanup_execution_sql, (days,))
+            result["execution_logs"] = cursor.rowcount
+
+            # 清理搜索日志
+            cursor.execute(cleanup_search_sql, (days,))
+            result["search_logs"] = cursor.rowcount
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            total = result["execution_logs"] + result["search_logs"]
+            if total > 0:
+                print(f"[db] 已清理 {total} 条超过 {days} 天的日志记录")
+
+            return result
+        except Error as e:
+            print(f"[db] 清理日志失败: {e}")
+            return result
+
     def log_search_result(
         self,
         keyword: str,
@@ -678,21 +877,22 @@ class XhsDatabase:
         images_failed: int = 0,
         duration_seconds: int = 0,
         error_message: str = None,
+        execution_id: str = None,
     ) -> bool:
         """记录搜索执行日志。"""
         insert_sql = """
         INSERT INTO search_logs (
-            keyword, posts_found, posts_inserted, posts_skipped,
+            execution_id, keyword, posts_found, posts_inserted, posts_skipped,
             images_found, images_uploaded, images_failed,
             duration_seconds, error_message
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
             cursor.execute(insert_sql, (
-                keyword, posts_found, posts_inserted, posts_skipped,
+                execution_id, keyword, posts_found, posts_inserted, posts_skipped,
                 images_found, images_uploaded, images_failed,
                 duration_seconds, error_message
             ))

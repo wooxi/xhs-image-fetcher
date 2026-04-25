@@ -789,57 +789,69 @@ def get_note_detail(note_url: str, xsec_token: str = "") -> dict:
                 "error": f"解析详情数据失败: {e}",
             }
 
-        # 从 DOM 中提取高清图片链接（优先使用 DOM 中的 src）
-        # 根据 XPath 分析: /html/body/div[5]/div[1]/div[2]/.../div/div/img
-        # 详情页图片在深层嵌套结构中，src 包含 sns-webpic-qc.xhscdn.com
+        # 从 DOM 中提取高清图片链接（使用精确XPath定位主贴图片）
+        # XPath: /html/body/div[5]/div[1]/div[2]/div/div/div[2]/div/div[2]/div/div/img
         dom_images = client._evaluate("""
             (() => {
                 let images = [];
-                
-                // 策略1: 直接匹配 sns-webpic-qc.xhscdn.com 格式的高清图片（最可靠）
-                const allImgs = document.querySelectorAll('img[src*="sns-webpic"]');
-                allImgs.forEach(img => {
+
+                // 策略1: 使用用户指定的精确XPath（只获取主贴图片）
+                const xpath = '/html/body/div[5]/div[1]/div[2]/div/div/div[2]/div/div[2]/div/div/img';
+                let xpathResult = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                for (let i = 0; i < xpathResult.snapshotLength; i++) {
+                    const img = xpathResult.snapshotItem(i);
                     const url = img.getAttribute('src') || img.getAttribute('data-src') || '';
-                    if (url && url.includes('sns-webpic') && !url.includes('avatar') && !url.includes('icon') && !images.includes(url)) {
+                    if (url && url.includes('xhscdn.com') && !images.includes(url)) {
                         images.push(url);
                     }
-                });
-                
-                // 策略2: 如果没找到，尝试详情页图片轮播区域的标准结构
-                // XPath: div[5] > div[1] > div[2] > div > div > div[2] > div > div[2] > div > div > img
+                }
+
+                // 策略2: 如果XPath没找到，尝试轮播区域的图片容器
                 if (images.length === 0) {
-                    // 尝试匹配详情页主内容区域的图片容器
-                    const detailSelectors = [
-                        // 图片轮播区域常见类名
-                        '.swiper-slide img',
-                        '.swiper-wrapper img',
-                        '.note-image-container img',
-                        '.post-detail img',
-                        // 小红书详情页特定结构
-                        'div[class*="note"] div[class*="slider"] img',
-                        'div[class*="note"] div[class*="swiper"] img',
-                        // 通用 fallback
-                        '.note-content img',
-                        '.post-content img'
+                    // 尝试多种可能的轮播容器结构
+                    const selectors = [
+                        // 主贴图片轮播容器（排除评论区）
+                        '.swiper-wrapper:not([class*="comment"]) img',
+                        '.swiper-slide:not([class*="comment"]) img',
+                        'div[class*="swiper-wrapper"] img',
+                        // 小红书主贴图片区域
+                        'div[class*="noteContainer"] > div[class*="swiper"] img',
+                        'div[class*="noteContainer"] > div > div[class*="swiper"] img'
                     ];
-                    
-                    for (const selector of detailSelectors) {
+
+                    for (const selector of selectors) {
                         const imgs = document.querySelectorAll(selector);
                         if (imgs.length > 0) {
                             imgs.forEach(img => {
                                 const url = img.getAttribute('src') || img.getAttribute('data-src') || '';
-                                // 过滤：只收集帖子高清图片，排除头像、图标等
-                                if (url && url.includes('xhscdn.com') && !url.includes('avatar') && !url.includes('icon') && !images.includes(url)) {
+                                // 只收集sns-webpic的高清图片，排除头像、图标、评论
+                                if (url && url.includes('sns-webpic') && !url.includes('avatar') && !url.includes('icon') && !url.includes('comment') && !images.includes(url)) {
                                     images.push(url);
                                 }
                             });
                             if (images.length > 0) {
+                                console.log('使用selector找到:', images.length);
                                 break;
                             }
                         }
                     }
                 }
-                
+
+                // 策略3: 通过位置过滤（主贴图片在页面左侧上半部分）
+                if (images.length === 0) {
+                    const allImgs = document.querySelectorAll('img[src*="sns-webpic"]');
+                    allImgs.forEach(img => {
+                        const rect = img.getBoundingClientRect();
+                        const url = img.getAttribute('src') || '';
+                        // 主贴图片特征：宽度大于100px，位置在页面左侧40%区域内
+                        if (url && rect.width > 100 && rect.left < window.innerWidth * 0.4) {
+                            if (!url.includes('avatar') && !url.includes('icon') && !url.includes('comment') && !images.includes(url)) {
+                                images.push(url);
+                            }
+                        }
+                    });
+                }
+
                 return images;
             })()
         """)
@@ -875,7 +887,7 @@ def get_note_detail(note_url: str, xsec_token: str = "") -> dict:
         client.disconnect()
 
 
-def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by: str = "general") -> dict:
+def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by: str = "general", db: Any = None, skip_existing: bool = True) -> dict:
     """搜索并批量获取笔记详情。
 
     Args:
@@ -883,6 +895,11 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
         limit: 搜索数量
         delay: 每次请求间隔（秒）
         sort_by: 排序方式
+        db: 数据库实例（可选，用于去重检查）
+        skip_existing: 是否跳过已存在的帖子（默认 True）
+
+    Returns:
+        包含 notes, posts_found, posts_new, posts_skipped 的结果字典
     """
     print(f"[xhs_cdp] 搜索并获取详情: {keyword}")
 
@@ -894,14 +911,31 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
 
     notes = search_result.get("notes", [])
     detailed_notes = []
+    posts_new = 0
+    posts_skipped = 0
 
     # 逐个获取详情
     for i, note in enumerate(notes):
+        note_id = note.get("id", "")
         url = note.get("url", "")
         xsec_token = note.get("xsec_token", "")
 
+        # 去重检查：在获取详情前检查帖子是否已存在
+        if skip_existing and db and note_id:
+            try:
+                if db.is_note_exists(note_id=note_id, url=url):
+                    print(f"[xhs_cdp] 跳过已存在帖子: {note_id}")
+                    posts_skipped += 1
+                    # 帖子之间添加随机停顿（模拟人类行为）
+                    if i < len(notes) - 1:
+                        pause = random.uniform(0.3, 0.8)
+                        time.sleep(pause)
+                    continue
+            except Exception as e:
+                print(f"[xhs_cdp] 去重检查失败: {e}")
+
         if url:
-            print(f"[xhs_cdp] 获取第 {i+1}/{len(notes)} 条详情...")
+            print(f"[xhs_cdp] 获取第 {i+1}/{len(notes)} 条详情（新帖子）...")
             detail = get_note_detail(url, xsec_token)
 
             # 合并搜索结果和详情
@@ -909,14 +943,21 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
                 combined = {**note, **detail}
                 combined["images"] = detail.get("images", [note.get("cover", "")])
                 detailed_notes.append(combined)
+                posts_new += 1
             else:
                 # 获取详情失败，只保留搜索结果
                 combined = {**note, "detail_error": detail.get("error", "未知错误")}
                 detailed_notes.append(combined)
+                posts_new += 1
 
-            # 间隔等待
+            # 间隔等待（使用随机停顿）
             if i < len(notes) - 1:
-                time.sleep(delay)
+                # 人类行为模拟：随机停顿
+                pause = random.uniform(delay * 0.7, delay * 1.5)
+                # 增加偶尔的"思考"停顿
+                if random.random() < 0.2:
+                    pause += random.uniform(0.5, 1.5)
+                time.sleep(pause)
         else:
             detailed_notes.append(note)
 
@@ -924,6 +965,9 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
         "success": True,
         "keyword": keyword,
         "sort_by": sort_by,
+        "posts_found": len(notes),
+        "posts_new": posts_new,
+        "posts_skipped": posts_skipped,
         "count": len(detailed_notes),
         "notes": detailed_notes,
     }
