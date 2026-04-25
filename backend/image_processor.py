@@ -192,94 +192,125 @@ class ImageProcessor:
         except Exception:
             return False
 
-    def download_image_via_cdp(self, image_url: str, timeout: float = 30.0) -> bytes:
-        """通过CDP浏览器下载图片（绕过防盗链）。"""
+    def download_image_via_cdp(self, image_url: str, timeout: float = 30.0, max_retries: int = 3) -> bytes:
+        """通过CDP浏览器下载图片（绕过防盗链），带重试机制和HTTP备用方案。"""
         ws = None
         msg_id = 0
         image_request_id = None
 
-        try:
-            # 获取CDP页面列表
-            base_url = f"http://{CDP_HOST}:{CDP_PORT}"
-            resp = requests.get(f"{base_url}/json", timeout=10)
-            resp.raise_for_status()
-            pages = resp.json()
+        for attempt in range(max_retries):
+            try:
+                # 获取CDP页面列表
+                base_url = f"http://{CDP_HOST}:{CDP_PORT}"
+                resp = requests.get(f"{base_url}/json", timeout=10)
+                resp.raise_for_status()
+                pages = resp.json()
 
-            # 找一个可用页面
-            ws_url = None
-            for page in pages:
-                if page.get("type") == "page" and page.get("webSocketDebuggerUrl"):
-                    ws_url = page.get("webSocketDebuggerUrl")
-                    break
+                # 找一个可用页面
+                ws_url = None
+                for page in pages:
+                    if page.get("type") == "page" and page.get("webSocketDebuggerUrl"):
+                        ws_url = page.get("webSocketDebuggerUrl")
+                        break
 
-            if not ws_url:
-                raise Exception("没有可用的CDP页面")
+                if not ws_url:
+                    raise Exception("没有可用的CDP页面")
 
-            ws = ws_client.connect(ws_url)
+                ws = ws_client.connect(ws_url)
 
-            def send_cdp(method: str, params: dict = None) -> dict:
-                nonlocal msg_id, image_request_id
-                msg_id += 1
-                msg = {"id": msg_id, "method": method}
-                if params:
-                    msg["params"] = params
-                ws.send(json.dumps(msg))
+                def send_cdp(method: str, params: dict = None) -> dict:
+                    nonlocal msg_id, image_request_id
+                    msg_id += 1
+                    msg = {"id": msg_id, "method": method}
+                    if params:
+                        msg["params"] = params
+                    ws.send(json.dumps(msg))
 
-                deadline = time.monotonic() + timeout
-                while time.monotonic() < deadline:
+                    deadline = time.monotonic() + timeout
+                    while time.monotonic() < deadline:
+                        try:
+                            remaining = max(0.1, deadline - time.monotonic())
+                            raw = ws.recv(timeout=remaining)
+                            data = json.loads(raw)
+
+                            # 监听图片请求
+                            if "method" in data and data["method"] == "Network.responseReceived":
+                                evt_params = data.get("params", {})
+                                resp_url = evt_params.get("response", {}).get("url", "")
+                                rid = evt_params.get("requestId")
+                                if image_url in resp_url or ("xhscdn.com" in resp_url and rid):
+                                    image_request_id = rid
+
+                            if data.get("id") == msg_id:
+                                if "error" in data:
+                                    raise Exception(f"CDP错误: {data['error']}")
+                                return data.get("result", {})
+                        except TimeoutError:
+                            continue
+                    raise Exception(f"超时: {method}")
+
+                # 启用Network监听
+                send_cdp("Network.enable")
+                send_cdp("Page.enable")
+
+                # 导航到图片URL
+                send_cdp("Page.navigate", {"url": image_url})
+                time.sleep(1.5)
+
+                # 获取图片数据
+                if image_request_id:
+                    result = send_cdp("Network.getResponseBody", {"requestId": image_request_id})
+                    body = result.get("body", "")
+                    base64_encoded = result.get("base64Encoded", False)
+
+                    if body:
+                        if base64_encoded:
+                            image_bytes = base64.b64decode(body)
+                        else:
+                            image_bytes = body.encode("utf-8") if isinstance(body, str) else body
+
+                        ws.close()
+                        return image_bytes
+
+                raise Exception("无法获取图片数据")
+
+            except Exception as e:
+                if ws:
                     try:
-                        remaining = max(0.1, deadline - time.monotonic())
-                        raw = ws.recv(timeout=remaining)
-                        data = json.loads(raw)
+                        ws.close()
+                    except:
+                        pass
+                    ws = None
 
-                        # 监听图片请求
-                        if "method" in data and data["method"] == "Network.responseReceived":
-                            evt_params = data.get("params", {})
-                            resp_url = evt_params.get("response", {}).get("url", "")
-                            rid = evt_params.get("requestId")
-                            if image_url in resp_url or ("xhscdn.com" in resp_url and rid):
-                                image_request_id = rid
+                # CDP失败后尝试HTTP备用方案
+                if attempt == max_retries - 1:
+                    print(f"[image_processor] CDP下载失败，尝试HTTP备用方案: {e}")
+                    try:
+                        # HTTP备用方案：使用小红书请求头绕过防盗链
+                        headers = {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer": "https://www.xiaohongshu.com/",
+                            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                            "Cache-Control": "no-cache",
+                            "Pragma": "no-cache",
+                        }
 
-                        if data.get("id") == msg_id:
-                            if "error" in data:
-                                raise Exception(f"CDP错误: {data['error']}")
-                            return data.get("result", {})
-                    except TimeoutError:
-                        continue
-                raise Exception(f"超时: {method}")
+                        resp = requests.get(image_url, headers=headers, timeout=30)
+                        if resp.status_code == 200 and len(resp.content) > 1000:
+                            print(f"[image_processor] HTTP备用方案成功，大小: {len(resp.content)} bytes")
+                            return resp.content
+                        else:
+                            print(f"[image_processor] HTTP备用方案失败: HTTP {resp.status_code}, size: {len(resp.content)}")
+                    except Exception as http_err:
+                        print(f"[image_processor] HTTP备用方案失败: {http_err}")
 
-            # 启用Network监听
-            send_cdp("Network.enable")
-            send_cdp("Page.enable")
+                    raise Exception(f"CDP和HTTP下载均失败: {e}")
 
-            # 导航到图片URL
-            send_cdp("Page.navigate", {"url": image_url})
-            time.sleep(1.5)
-
-            # 获取图片数据
-            if image_request_id:
-                result = send_cdp("Network.getResponseBody", {"requestId": image_request_id})
-                body = result.get("body", "")
-                base64_encoded = result.get("base64Encoded", False)
-
-                if body:
-                    if base64_encoded:
-                        image_bytes = base64.b64decode(body)
-                    else:
-                        image_bytes = body.encode("utf-8") if isinstance(body, str) else body
-
-                    ws.close()
-                    return image_bytes
-
-            raise Exception("无法获取图片数据")
-
-        except Exception as e:
-            if ws:
-                try:
-                    ws.close()
-                except:
-                    pass
-            raise Exception(f"CDP下载失败: {e}")
+                # 重试前等待
+                wait_time = 0.5 * (2 ** attempt)
+                print(f"[image_processor] CDP下载失败，等待 {wait_time}s 后重试 (尝试 {attempt + 2}/{max_retries})")
+                time.sleep(wait_time)
 
     def upload_to_lsky(self, image_bytes: bytes, filename: str = "xhs_image.jpg") -> Dict[str, Any]:
         """上传图片到Lsky Pro图床。"""

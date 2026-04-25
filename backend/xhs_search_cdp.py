@@ -136,24 +136,56 @@ class XHSCDPClient:
 
         raise CDPError("没有可用的浏览器 tab")
 
-    def connect(self, target_url_prefix: str = ""):
-        """连接到浏览器 tab。"""
-        ws_url = self._find_or_create_tab(target_url_prefix)
-        if not ws_url:
-            raise CDPError("无法获取 WebSocket URL")
+    def connect(self, target_url_prefix: str = "", max_retries: int = 3):
+        """连接到浏览器 tab（带重试机制）。"""
+        for attempt in range(max_retries):
+            try:
+                ws_url = self._find_or_create_tab(target_url_prefix)
+                if not ws_url:
+                    raise CDPError("无法获取 WebSocket URL")
 
-        print(f"[xhs_cdp] 连接到: {ws_url}")
-        self.ws = ws_client.connect(ws_url)
-        print("[xhs_cdp] 已连接")
+                print(f"[xhs_cdp] 连接到: {ws_url} (尝试 {attempt + 1}/{max_retries})")
+                self.ws = ws_client.connect(ws_url)
+                print("[xhs_cdp] 已连接")
 
-        # 初始化人类行为模拟器
-        if self.use_human_behavior:
-            self.human_simulator = HumanBehaviorSimulator(self.ws)
+                # 初始化人类行为模拟器
+                if self.use_human_behavior:
+                    self.human_simulator = HumanBehaviorSimulator(self.ws)
 
-            # 尝试加载缓存的会话
-            if self.session_manager and self.session_manager.is_session_valid():
-                print("[xhs_cdp] 发现有有效的缓存会话，尝试加载...")
-                self.session_manager.load_cookies(self.ws)
+                    # 尝试加载缓存的会话
+                    if self.session_manager and self.session_manager.is_session_valid():
+                        print("[xhs_cdp] 发现有有效的缓存会话，尝试加载...")
+                        self.session_manager.load_cookies(self.ws)
+
+                return  # 连接成功
+            except Exception as e:
+                print(f"[xhs_cdp] 连接失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                if self.ws:
+                    try:
+                        self.ws.close()
+                    except:
+                        pass
+                    self.ws = None
+
+                if attempt < max_retries - 1:
+                    wait_time = 0.5 * (2 ** attempt)  # 指数退避: 0.5s, 1s, 2s
+                    print(f"[xhs_cdp] 等待 {wait_time}s 后重试...")
+                    time.sleep(wait_time)
+                else:
+                    raise CDPError(f"连接失败，已重试 {max_retries} 次: {e}")
+
+    def _reconnect(self):
+        """重新连接到浏览器（在连接断开时使用）。"""
+        print("[xhs_cdp] 尝试重新连接...")
+        if self.ws:
+            try:
+                self.ws.close()
+            except:
+                pass
+            self.ws = None
+
+        # 重连时使用较短的超时
+        self.connect(max_retries=2)
 
     def disconnect(self):
         """断开连接（保存会话）。"""
@@ -168,35 +200,80 @@ class XHSCDPClient:
             self.ws.close()
             self.ws = None
 
-    def _send(self, method: str, params: dict = None, timeout: float = 30.0) -> dict:
-        """发送 CDP 命令并等待响应。"""
-        if not self.ws:
-            raise CDPError("未连接，请先调用 connect()")
+    def _send(self, method: str, params: dict = None, timeout: float = 30.0, max_retries: int = 3) -> dict:
+        """发送 CDP 命令并等待响应（带重试机制）。"""
+        for attempt in range(max_retries):
+            if not self.ws:
+                if attempt < max_retries - 1:
+                    try:
+                        self._reconnect()
+                        continue
+                    except Exception as e:
+                        if attempt == max_retries - 1:
+                            raise CDPError(f"未连接且重连失败: {e}")
+                else:
+                    raise CDPError("未连接，请先调用 connect()")
 
-        self._msg_id += 1
-        msg_id = self._msg_id
-        msg = {"id": msg_id, "method": method}
-        if params:
-            msg["params"] = params
-
-        self.ws.send(json.dumps(msg))
-        deadline = time.monotonic() + timeout
-
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise CDPError(f"等待 CDP 响应超时: {method}")
+            self._msg_id += 1
+            msg_id = self._msg_id
+            msg = {"id": msg_id, "method": method}
+            if params:
+                msg["params"] = params
 
             try:
-                raw = self.ws.recv(timeout=max(0.1, remaining))
-            except TimeoutError:
-                raise CDPError(f"等待 CDP 响应超时: {method}")
+                self.ws.send(json.dumps(msg))
+            except Exception as send_err:
+                print(f"[xhs_cdp] 发送失败: {send_err}")
+                if attempt < max_retries - 1:
+                    try:
+                        self._reconnect()
+                        wait_time = 0.5 * (2 ** attempt)
+                        time.sleep(wait_time)
+                        continue
+                    except:
+                        pass
+                raise CDPError(f"发送命令失败: {send_err}")
 
-            data = json.loads(raw)
-            if data.get("id") == msg_id:
-                if "error" in data:
-                    raise CDPError(f"CDP 错误: {data['error']}")
-                return data.get("result", {})
+            deadline = time.monotonic() + timeout
+
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break  # 超时，进入重试逻辑
+
+                try:
+                    raw = self.ws.recv(timeout=max(0.1, remaining))
+                except TimeoutError:
+                    break  # 超时，进入重试逻辑
+                except Exception as recv_err:
+                    print(f"[xhs_cdp] 接收失败: {recv_err}")
+                    if attempt < max_retries - 1:
+                        try:
+                            self._reconnect()
+                            wait_time = 0.5 * (2 ** attempt)
+                            time.sleep(wait_time)
+                            continue  # 重试整个发送流程
+                        except:
+                            pass
+                    raise CDPError(f"接收响应失败: {recv_err}")
+
+                data = json.loads(raw)
+                if data.get("id") == msg_id:
+                    if "error" in data:
+                        raise CDPError(f"CDP 错误: {data['error']}")
+                    return data.get("result", {})
+
+            # 超时，检查是否需要重试
+            if attempt < max_retries - 1:
+                wait_time = 0.5 * (2 ** attempt)  # 指数退避
+                print(f"[xhs_cdp] {method} 超时，等待 {wait_time}s 后重试 (尝试 {attempt + 2}/{max_retries})")
+                time.sleep(wait_time)
+                try:
+                    self._reconnect()
+                except:
+                    pass  # 重连失败也会继续重试
+            else:
+                raise CDPError(f"等待 CDP 响应超时: {method} (已重试 {max_retries} 次)")
 
         raise CDPError(f"等待 CDP 响应超时: {method}")
 
