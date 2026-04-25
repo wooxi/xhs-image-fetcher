@@ -51,12 +51,12 @@ except ImportError:
 class XhsSearchToDB:
     """小红书搜索入库类。"""
 
-    def __init__(self, upload_images: bool = False):
+    def __init__(self, upload_images: bool = True):  # 默认启用图片上传
         self.db = XhsDatabase()
         self.upload_images = upload_images
         self.image_uploader = None
 
-        # 如果启用图片上传，初始化新版图片处理器
+        # 默认启用图片上传，初始化图片处理器
         if upload_images and ImageProcessor:
             try:
                 from image_processor import ImageProcessorLogger
@@ -65,7 +65,11 @@ class XhsSearchToDB:
                 print("[main] 图片上传功能已启用（新版处理器）")
             except Exception as e:
                 print(f"[main] 图片处理器初始化失败: {e}")
+                print("[main] 将直接存储原始图片链接")
                 self.upload_images = False
+        elif upload_images:
+            print("[main] 警告: image_processor模块不可用，图片上传功能禁用")
+            self.upload_images = False
 
     def init(self) -> bool:
         """初始化数据库连接和表结构。"""
