@@ -965,84 +965,130 @@ def get_note_detail(note_url: str, xsec_token: str = "") -> dict:
 
 
 def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by: str = "general", db: Any = None, skip_existing: bool = True) -> dict:
-    """搜索并批量获取笔记详情。
+    """搜索并批量获取笔记详情（智能补充搜索 + 随机排序）。
 
     Args:
         keyword: 搜索关键词
-        limit: 搜索数量
+        limit: 需要获取的新帖子数量（最终目标）
         delay: 每次请求间隔（秒）
-        sort_by: 排序方式
+        sort_by: 排序方式（可以是 "random" 表示每次随机选择）
         db: 数据库实例（可选，用于去重检查）
         skip_existing: 是否跳过已存在的帖子（默认 True）
 
     Returns:
         包含 notes, posts_found, posts_new, posts_skipped 的结果字典
     """
-    print(f"[xhs_cdp] 搜索并获取详情: {keyword}")
+    print(f"[xhs_cdp] 搜索并获取详情: {keyword}, 目标新帖子数: {limit}")
 
-    # 先搜索（不保存，最后统一保存）
-    search_result = search_notes(keyword, limit, sort_by, save=False)
+    # 支持的排序方式
+    sort_options = ["general", "popular", "latest"]  # 综合、热门、最新
 
-    if not search_result.get("success", False):
-        return search_result
-
-    notes = search_result.get("notes", [])
     detailed_notes = []
     posts_new = 0
     posts_skipped = 0
+    total_searched = 0
+    seen_note_ids = set()  # 已处理过的帖子ID（防止重复）
+    max_search_attempts = limit * 4  # 最大搜索尝试次数（防止无限循环）
+    batch_count = 0
 
-    # 逐个获取详情
-    for i, note in enumerate(notes):
-        note_id = note.get("id", "")
-        url = note.get("url", "")
-        xsec_token = note.get("xsec_token", "")
+    # 循环搜索直到获取足够的新帖子
+    while posts_new < limit and total_searched < max_search_attempts:
+        batch_count += 1
+        # 计算本次需要搜索的数量：多搜索一些以补偿跳过的
+        batch_limit = min(limit * 2, 30)
 
-        # 去重检查：在获取详情前检查帖子是否已存在
-        if skip_existing and db and note_id:
-            try:
-                if db.is_note_exists(note_id=note_id, url=url):
-                    print(f"[xhs_cdp] 跳过已存在帖子: {note_id}")
-                    posts_skipped += 1
-                    # 帖子之间添加随机停顿（模拟人类行为）
-                    if i < len(notes) - 1:
+        # 每批次随机选择排序方式（如果指定了 "random" 或每次都随机）
+        if sort_by == "random":
+            current_sort = random.choice(sort_options)
+        else:
+            # 为了获取更多不同结果，每批次随机切换排序
+            current_sort = random.choice(sort_options)
+
+        print(f"[xhs_cdp] 搜索批次 #{batch_count}: 目标 {limit} 个新帖子，当前已有 {posts_new} 个，还需 {limit - posts_new} 个，排序: {current_sort}")
+
+        # 执行搜索
+        search_result = search_notes(keyword, batch_limit, current_sort, save=False)
+
+        if not search_result.get("success", False):
+            if total_searched == 0:
+                return search_result  # 第一次搜索失败则返回错误
+            break  # 后续搜索失败则结束
+
+        notes = search_result.get("notes", [])
+        if not notes:
+            print("[xhs_cdp] 搜索结果为空，结束搜索")
+            break
+
+        total_searched += len(notes)
+        batch_new = 0  # 本批次新帖子数
+
+        # 处理本轮搜索结果
+        for i, note in enumerate(notes):
+            note_id = note.get("id", "")
+            url = note.get("url", "")
+            xsec_token = note.get("xsec_token", "")
+
+            # 检查是否已经处理过（防止重复）
+            if note_id in seen_note_ids:
+                continue
+            seen_note_ids.add(note_id)
+
+            # 去重检查：在获取详情前检查帖子是否已存在数据库
+            if skip_existing and db and note_id:
+                try:
+                    if db.is_note_exists(note_id=note_id, url=url):
+                        print(f"[xhs_cdp] 跳过已存在帖子: {note_id}")
+                        posts_skipped += 1
+                        # 帖子之间添加随机停顿（模拟人类行为）
                         pause = random.uniform(0.3, 0.8)
                         time.sleep(pause)
-                    continue
-            except Exception as e:
-                print(f"[xhs_cdp] 去重检查失败: {e}")
+                        continue
+                except Exception as e:
+                    print(f"[xhs_cdp] 去重检查失败: {e}")
 
-        if url:
-            print(f"[xhs_cdp] 获取第 {i+1}/{len(notes)} 条详情（新帖子）...")
-            detail = get_note_detail(url, xsec_token)
+            # 检查是否已达到目标
+            if posts_new >= limit:
+                print(f"[xhs_cdp] 已达到目标数量 {limit}，停止获取")
+                break
 
-            # 合并搜索结果和详情
-            if detail.get("success", False):
-                combined = {**note, **detail}
-                combined["images"] = detail.get("images", [note.get("cover", "")])
-                detailed_notes.append(combined)
-                posts_new += 1
-            else:
-                # 获取详情失败，只保留搜索结果
-                combined = {**note, "detail_error": detail.get("error", "未知错误")}
-                detailed_notes.append(combined)
-                posts_new += 1
+            if url:
+                print(f"[xhs_cdp] 获取详情 [{posts_new + 1}/{limit}]: {note_id}")
+                detail = get_note_detail(url, xsec_token)
 
-            # 间隔等待（使用随机停顿）
-            if i < len(notes) - 1:
-                # 人类行为模拟：随机停顿
+                # 合并搜索结果和详情
+                if detail.get("success", False):
+                    combined = {**note, **detail}
+                    combined["images"] = detail.get("images", [note.get("cover", "")])
+                    detailed_notes.append(combined)
+                    posts_new += 1
+                    batch_new += 1
+                else:
+                    print(f"[xhs_cdp] 获取详情失败: {detail.get('error', '未知错误')}")
+
+                # 间隔等待（使用随机停顿）
                 pause = random.uniform(delay * 0.7, delay * 1.5)
-                # 增加偶尔的"思考"停顿
                 if random.random() < 0.2:
                     pause += random.uniform(0.5, 1.5)
                 time.sleep(pause)
-        else:
-            detailed_notes.append(note)
+
+        # 如果本轮没有获取到任何新帖子，可能需要翻页或停止
+        if batch_new == 0 and len(notes) > 0:
+            print(f"[xhs_cdp] 本轮搜索未获取到新帖子（全部已存在），可能已到达重复边界")
+            # 可以选择停止或继续尝试（取决于是否需要翻页）
+            # 这里继续尝试，但增加等待时间
+            time.sleep(random.uniform(2.0, 3.0))
+
+        # 如果还需要更多帖子，等待后继续
+        if posts_new < limit and batch_new > 0:
+            time.sleep(random.uniform(1.0, 2.0))
+
+    print(f"[xhs_cdp] 搜索完成: 共搜索 {total_searched} 条，跳过 {posts_skipped} 条已存在，获取 {posts_new} 条新帖子")
 
     output = {
         "success": True,
         "keyword": keyword,
         "sort_by": sort_by,
-        "posts_found": len(notes),
+        "posts_found": total_searched,
         "posts_new": posts_new,
         "posts_skipped": posts_skipped,
         "count": len(detailed_notes),
