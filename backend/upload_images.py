@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 配置常量
-LSKY_PRO_URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.4:5021")
+LSKY_PRO_URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.3:5021")
 LSKY_PRO_TOKEN = os.getenv("LSKY_PRO_TOKEN", "")
 TEMP_DIR = Path(os.getenv("TEMP_DIR", "/tmp/xhs_images"))
 

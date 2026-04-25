@@ -158,7 +158,7 @@ class DatabaseConfig:
 class LskyProConfig:
     """Lsky Pro 图床配置。"""
 
-    URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.4:5021")
+    URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.3:5021")
     EMAIL = os.getenv("LSKY_PRO_EMAIL", "")
     PASSWORD = os.getenv("LSKY_PRO_PASSWORD", "")
     TOKEN = os.getenv("LSKY_PRO_TOKEN", "")
