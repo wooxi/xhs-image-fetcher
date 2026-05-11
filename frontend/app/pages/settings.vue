@@ -152,6 +152,16 @@
                     </svg>
                     {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
                   </button>
+                  <hr class="my-1">
+                  <button
+                    @click="confirmDelete(kw)"
+                    class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    删除
+                  </button>
                 </div>
               </div>
             </div>
@@ -360,6 +370,28 @@
       </div>
     </div>
 
+    <!-- 删除确认模态框 -->
+    <div
+      v-if="deleteTarget"
+      class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
+      @click.self="deleteTarget = null"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 text-center">
+        <svg class="w-12 h-12 mx-auto text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
+        </svg>
+        <h2 class="text-base font-bold text-gray-800 mb-1">确认删除关键词</h2>
+        <p class="text-sm text-gray-500 mb-1">确定要删除关键词 "<strong class="text-gray-700">{{ deleteTarget.keyword }}</strong>" 吗？</p>
+        <p class="text-xs text-red-500 mb-4">关联的搜索日志和执行日志也会被一并删除</p>
+        <div class="flex justify-center gap-3">
+          <button @click="deleteTarget = null" class="px-4 py-1.5 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 rounded-lg transition">取消</button>
+          <button @click="deleteKeyword" :disabled="deleting" class="px-4 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50">
+            {{ deleting ? '删除中...' : '确认删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 提示消息 -->
     <div
       v-if="toast.show"
@@ -482,6 +514,36 @@ const addKeyword = async () => {
     showToast(e.message || '添加失败', 'error')
   }
   adding.value = false
+}
+
+// 删除关键词
+const deleteTarget = ref<Keyword | null>(null)
+const deleting = ref(false)
+
+const confirmDelete = (kw: Keyword) => {
+  deleteTarget.value = kw
+  actionMenuOpen.value[kw.id] = false
+}
+
+const deleteKeyword = async () => {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    const res = await $fetch('/api/keywords', {
+      method: 'DELETE',
+      body: { keyword: deleteTarget.value.keyword }
+    })
+    if (res.success) {
+      showToast('已删除', 'success')
+      deleteTarget.value = null
+      refresh()
+    } else {
+      showToast(res.error || '删除失败', 'error')
+    }
+  } catch (e: any) {
+    showToast(e.message || '删除失败', 'error')
+  }
+  deleting.value = false
 }
 
 // 切换自动搜索
