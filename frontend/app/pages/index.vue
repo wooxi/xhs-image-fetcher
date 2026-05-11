@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 overflow-x-hidden">
     <!-- 防盗链：设置 meta referrer -->
     <Head>
       <meta name="referrer" content="no-referrer" />
@@ -7,7 +7,7 @@
 
     <!-- 顶部搜索栏 -->
     <header class="sticky top-0 bg-white/95 backdrop-blur-sm shadow-sm z-50 border-b border-gray-100">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center gap-2 sm:gap-4 flex-wrap sm:flex-nowrap justify-between">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 bg-xhs-red rounded-lg flex items-center justify-center">
             <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -16,13 +16,13 @@
           </div>
           <h1 class="text-xl font-bold text-gray-900 tracking-tight">摄影灵感库</h1>
         </div>
-        <div class="flex items-center gap-4">
-          <div class="relative">
+        <div class="flex items-center gap-2 sm:gap-4 w-full sm:w-auto order-3 sm:order-2">
+          <div class="relative flex-1 sm:flex-none">
             <input
               v-model="searchKeyword"
               type="text"
               placeholder="搜索关键词..."
-              class="pl-10 pr-4 py-2.5 w-64 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-xhs-red/30 focus:border-xhs-red transition-all"
+              class="pl-10 pr-4 py-2.5 w-full sm:w-64 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-xhs-red/30 focus:border-xhs-red transition-all"
               @keyup.enter="searchPosts"
             />
             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -31,25 +31,25 @@
           </div>
           <button
             @click="searchPosts"
-            class="px-5 py-2.5 bg-xhs-red text-white rounded-xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex items-center gap-2"
+            class="px-3 sm:px-5 py-2.5 bg-xhs-red text-white rounded-xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex items-center gap-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            搜索
-          </button>
-          <!-- 设置入口 -->
-          <button
-            @click="$router.push('/settings')"
-            class="flex items-center gap-2 px-4 py-2.5 text-gray-600 hover:text-xhs-red hover:bg-gray-50 rounded-xl transition-all"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span class="hidden sm:inline font-medium">设置</span>
+            <span class="hidden sm:inline">搜索</span>
           </button>
         </div>
+        <!-- 设置入口 -->
+        <button
+          @click="$router.push('/settings')"
+          class="flex items-center gap-2 px-3 sm:px-4 py-2.5 text-gray-600 hover:text-xhs-red hover:bg-gray-50 rounded-xl transition-all order-2 sm:order-3"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span class="hidden sm:inline font-medium">设置</span>
+        </button>
       </div>
     </header>
 
@@ -84,6 +84,9 @@
           :key="post.id"
           class="masonry-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group break-inside-avoid"
           @click="openPostModal(post)"
+          @touchstart="handleCardTouchStart(post, $event)"
+          @touchend="handleCardTouchEnd"
+          @contextmenu.prevent="showDeleteConfirm(post)"
         >
           <!-- 主图 -->
           <div class="relative overflow-hidden">
@@ -341,13 +344,49 @@
           </p>
         
           <!-- 查看原文按钮 -->
-          <a 
-            :href="selectedPost.url" 
+          <a
+            :href="selectedPost.url"
             target="blank"
             class="inline-block px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition text-sm"
           >
             查看小红书原文 ↗
           </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认模态框 -->
+    <div
+      v-if="deleteConfirmPost"
+      class="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center"
+      @click.self="cancelDelete"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center">
+        <div class="text-red-500 mb-4">
+          <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
+          </svg>
+        </div>
+        <h2 class="text-lg font-bold text-gray-800 mb-2">确认删除</h2>
+        <p class="text-gray-600 mb-2">
+          确定要删除帖子 "{{ deleteConfirmPost.title?.slice(0, 30) }}..." 吗？
+        </p>
+        <p class="text-sm text-gray-400 mb-4">
+          将同时删除已下载的图片文件
+        </p>
+        <div class="flex justify-center gap-3">
+          <button
+            @click="cancelDelete"
+            class="px-4 py-2 text-gray-600 hover:text-gray-800 bg-gray-100 rounded-lg transition"
+          >
+            取消
+          </button>
+          <button
+            @click="deletePost"
+            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+          >
+            删除
+          </button>
         </div>
       </div>
     </div>
@@ -389,6 +428,58 @@ const touchOffset = ref(0)
 const showSwipeHint = ref(true)
 const SWIPE_THRESHOLD = 50 // 滑动阈值(px)
 
+// 长按删除状态
+const longPressTimer = ref<NodeJS.Timeout | null>(null)
+const deleteConfirmPost = ref<Post | null>(null)
+const LONG_PRESS_DURATION = 500 // 长按触发时间(ms)
+
+// 长按开始
+const handleCardTouchStart = (post: Post, e: TouchEvent) => {
+  longPressTimer.value = setTimeout(() => {
+    showDeleteConfirm(post)
+  }, LONG_PRESS_DURATION)
+}
+
+// 长按结束（如果未触发则取消）
+const handleCardTouchEnd = () => {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+}
+
+// 显示删除确认
+const showDeleteConfirm = (post: Post) => {
+  deleteConfirmPost.value = post
+}
+
+// 取消删除
+const cancelDelete = () => {
+  deleteConfirmPost.value = null
+}
+
+// 执行删除
+const deletePost = async () => {
+  if (!deleteConfirmPost.value) return
+
+  try {
+    const res = await $fetch('/api/posts/delete', {
+      method: 'POST',
+      body: { id: deleteConfirmPost.value.id }
+    })
+
+    if (res.success) {
+      // 刷新列表
+      refresh()
+      deleteConfirmPost.value = null
+    } else {
+      alert(res.error || '删除失败')
+    }
+  } catch (e: any) {
+    alert(e.message || '删除失败')
+  }
+}
+
 // 计算当前显示的图片
 const currentImage = computed(() => {
   if (selectedPost.value && selectedPost.value.images && selectedPost.value.images.length > 0) {
@@ -404,7 +495,7 @@ const { data, pending, error, refresh } = await useFetch('/api/posts', {
     pageSize,
     keyword: searchKeyword
   },
-  watch: [page]
+  watch: [page, searchKeyword]
 })
 
 const posts = computed(() => data.value?.posts || [])

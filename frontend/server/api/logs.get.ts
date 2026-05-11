@@ -1,7 +1,8 @@
-import mysql from 'mysql2/promise'
+import { getPool, formatDateTime } from '../utils/db'
 
 interface SearchLog {
   id: number
+  execution_id: string | null
   keyword: string
   posts_found: number
   posts_inserted: number
@@ -12,60 +13,53 @@ interface SearchLog {
   duration_seconds: number
   error_message: string | null
   created_at: string
-}
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
+  log_count?: number
 }
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const keyword = query.keyword as string | undefined
   const limit = Number(query.limit) || 50
-  
-  const connection = await mysql.createConnection(dbConfig)
-  
+
+  const pool = getPool()
+
   try {
     let sql: string
-    let params: string[] = []
-    
+    let params: any[] = []
+
     if (keyword && keyword.trim()) {
       sql = `
-        SELECT id, keyword, posts_found, posts_inserted, posts_skipped,
-               images_found, images_uploaded, images_failed,
-               duration_seconds, error_message, created_at
-        FROM search_logs
-        WHERE keyword = ?
-        ORDER BY created_at DESC
-        LIMIT ${limit}
+        SELECT sl.id, sl.execution_id, sl.keyword, sl.posts_found, sl.posts_inserted, sl.posts_skipped,
+               sl.images_found, sl.images_uploaded, sl.images_failed,
+               sl.duration_seconds, sl.error_message, sl.created_at,
+               (SELECT COUNT(*) FROM execution_logs WHERE execution_id = sl.execution_id) as log_count
+        FROM search_logs sl
+        WHERE sl.keyword = ?
+        ORDER BY sl.created_at DESC
+        LIMIT ?
       `
-      params = [keyword.trim()]
+      params = [keyword.trim(), limit]
     } else {
       sql = `
-        SELECT id, keyword, posts_found, posts_inserted, posts_skipped,
-               images_found, images_uploaded, images_failed,
-               duration_seconds, error_message, created_at
-        FROM search_logs
-        ORDER BY created_at DESC
-        LIMIT ${limit}
+        SELECT sl.id, sl.execution_id, sl.keyword, sl.posts_found, sl.posts_inserted, sl.posts_skipped,
+               sl.images_found, sl.images_uploaded, sl.images_failed,
+               sl.duration_seconds, sl.error_message, sl.created_at,
+               (SELECT COUNT(*) FROM execution_logs WHERE execution_id = sl.execution_id) as log_count
+        FROM search_logs sl
+        ORDER BY sl.created_at DESC
+        LIMIT ?
       `
+      params = [limit]
     }
-    
-    const [rows] = await connection.execute(sql, params)
-    
-    // 格式化时间
+
+    const [rows] = await pool.query(sql, params)
+
     const logs: SearchLog[] = (rows as any[]).map(row => ({
       ...row,
-      created_at: row.created_at instanceof Date 
-        ? row.created_at.toISOString() 
-        : String(row.created_at)
+      created_at: formatDateTime(row.created_at) || String(row.created_at),
+      log_count: row.log_count || 0
     }))
-    
+
     return {
       success: true,
       logs,
@@ -76,7 +70,5 @@ export default defineEventHandler(async (event) => {
       success: false,
       error: error.message || '获取搜索日志失败'
     }
-  } finally {
-    await connection.end()
   }
 })

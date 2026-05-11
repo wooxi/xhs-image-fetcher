@@ -25,17 +25,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 配置常量
-LSKY_PRO_URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.3:5021")
-LSKY_PRO_TOKEN = os.getenv("LSKY_PRO_TOKEN", "")
+# 导入统一配置
+try:
+    from config import LskyProConfig, CDPConfig, XHS_CDN_DOMAINS
+    LSKY_PRO_URL = LskyProConfig.URL
+    LSKY_PRO_TOKEN = LskyProConfig.TOKEN
+    CDP_HOST = CDPConfig.HOST
+    CDP_PORT = CDPConfig.PORT
+except ImportError:
+    # 降级到本地配置
+    LSKY_PRO_URL = os.getenv("LSKY_PRO_URL", "http://192.168.100.3:5021")
+    LSKY_PRO_TOKEN = os.getenv("LSKY_PRO_TOKEN", "")
+    CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
+    CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
+    XHS_CDN_DOMAINS = ["sns-webpic-qc.xhscdn.com", "sns-webpic-cn.xhscdn.com", "sns-webpic.xhscdn.com", "xhscdn.com"]
+
 TEMP_DIR = Path(os.getenv("TEMP_DIR", "/tmp/xhs_images"))
-
-# CDP 配置
-CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
-CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
-
-# 小红书 CDN 域名
-XHS_CDN_DOMAINS = ["sns-webpic-qc.xhscdn.com", "sns-webpic-cn.xhscdn.com", "sns-webpic.xhscdn.com", "xhscdn.com"]
 
 
 class ImageProcessorLogger:
@@ -156,8 +161,11 @@ class ImageProcessor:
 
     def _get_token(self) -> str:
         """通过API获取Token。"""
-        email = os.getenv("LSKY_PRO_EMAIL", "wooxi@foxmail.com")
-        password = os.getenv("LSKY_PRO_PASSWORD", "ulikem00n")
+        email = os.getenv("LSKY_PRO_EMAIL", "")
+        password = os.getenv("LSKY_PRO_PASSWORD", "")
+        if not email or not password:
+            self.logger.log("图床邮箱或密码未配置", "error")
+            return ""
 
         try:
             resp = requests.post(
@@ -383,6 +391,7 @@ class ImageProcessor:
                     "success": True,
                     "original_url": image_url,
                     "lsky_url": upload_result.get("url", ""),
+                    "lsky_key": upload_result.get("key", ""),
                     "thumbnail": upload_result.get("thumbnail", ""),
                 }
             else:
@@ -420,11 +429,15 @@ class ImageProcessor:
             result = self.process_image(img_url, i + 1, len(images))
 
             if result.get("success"):
-                new_images.append(result.get("lsky_url", img_url))
+                # 存储 url 和 key，key 用于后续删除图床图片
+                new_images.append({
+                    "url": result.get("lsky_url", img_url),
+                    "key": result.get("lsky_key", ""),
+                })
                 upload_success += 1
             else:
-                # 上传失败，保留原图URL（但可能无法显示）
-                new_images.append(img_url)
+                # 上传失败，保留原图URL（可能无法显示，无 key）
+                new_images.append({"url": img_url})
                 upload_fail += 1
 
             # 上传间隔（避免过快）

@@ -308,12 +308,57 @@ class XhsDatabase:
             return False
 
     def insert_notes_batch(self, notes: List[Dict[str, Any]], keyword: str = "", search_sort: str = "general") -> int:
-        """批量插入帖子记录。"""
-        success_count = 0
+        """批量插入帖子记录（单条SQL语句）。"""
+        if not notes:
+            return 0
+
+        sql = """
+        INSERT INTO notes (
+            id, title, content, url, type, images, video, video_cover, video_duration,
+            likes, collects, comments, shares, author_id, author_name, author_avatar,
+            ip_location, publish_time, xsec_token, keyword, search_sort
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        ON DUPLICATE KEY UPDATE
+            title = VALUES(title), content = VALUES(content), likes = VALUES(likes),
+            collects = VALUES(collects), comments = VALUES(comments), shares = VALUES(shares),
+            images = VALUES(images), video = VALUES(video), video_cover = VALUES(video_cover),
+            video_duration = VALUES(video_duration), author_name = VALUES(author_name),
+            author_avatar = VALUES(author_avatar), updated_at = CURRENT_TIMESTAMP
+        """
+
+        params_list = []
         for note in notes:
-            if self.insert_note(note, keyword, search_sort):
-                success_count += 1
-        return success_count
+            author = note.get("author", {})
+            images_json = json.dumps(note.get("images", [])) if note.get("images") else None
+            params_list.append((
+                note.get("id", ""), note.get("title", ""), note.get("content", ""),
+                note.get("url", ""), note.get("type", "normal"), images_json,
+                note.get("video", ""), note.get("video_cover", ""), note.get("video_duration", 0),
+                convert_chinese_number(note.get("likes", 0)),
+                convert_chinese_number(note.get("collects", 0)),
+                convert_chinese_number(note.get("comments", 0)),
+                convert_chinese_number(note.get("shares", 0)),
+                author.get("id", ""), author.get("name", ""), author.get("avatar", ""),
+                note.get("ip_location", ""),
+                note.get("time", 0) or note.get("publish_time", 0) or 0,
+                note.get("xsec_token", ""), keyword, search_sort,
+            ))
+
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.executemany(sql, params_list)
+            conn.commit()
+            affected = cursor.rowcount
+            cursor.close()
+            conn.close()
+            print(f"[db] 批量插入 {len(notes)} 条帖子, 影响 {affected} 行")
+            return affected
+        except Error as e:
+            print(f"[db] 批量插入失败: {e}")
+            return 0
 
     def query_notes(self, keyword: str = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """查询帖子记录。"""

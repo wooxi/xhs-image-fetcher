@@ -28,6 +28,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 导入统一配置
+from config import HumanBehaviorConfig
+
 # 会话缓存目录
 SESSION_CACHE_DIR = Path(os.getenv("SESSION_CACHE_DIR", "/tmp/xhs_session"))
 SESSION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -38,40 +41,6 @@ SESSION_META_FILE = SESSION_CACHE_DIR / "session_meta.json"
 
 # 会话有效期（小时）- 参考 XiaohongshuSkills
 SESSION_CACHE_HOURS = 12
-
-
-class HumanBehaviorConfig:
-    """人类行为模拟配置。"""
-
-    # 鼠标移动
-    MOUSE_SPEED_MIN = 50      # px/s 最小速度
-    MOUSE_SPEED_MAX = 200     # px/s 最大速度
-    MOUSE_PATH_JITTER = 5     # 随机路径抖动（像素）
-    MOUSE_MOVE_STEPS = 20     # 移动步数
-
-    # 滚动行为
-    SCROLL_SPEED_MIN = 30     # px/s 最小滚动速度
-    SCROLL_SPEED_MAX = 150    # px/s 最大滚动速度
-    SCROLL_PAUSE_MIN = 0.3    # 滚动暂停最小时间（秒）
-    SCROLL_PAUSE_MAX = 2.0    # 滚动暂停最大时间（秒）
-    SCROLL_CHUNK_MIN = 50     # 每次滚动最小像素
-    SCROLL_CHUNK_MAX = 300    # 每次滚动最大像素
-
-    # 打字速度
-    TYPING_SPEED_MIN = 50     # ms 每字符最小间隔
-    TYPING_SPEED_MAX = 150    # ms 每字符最大间隔
-    TYPING_WORD_PAUSE = 0.2   # 词边界暂停（秒）
-    TYPING_THINK_PAUSE = 0.5  # 思考暂停概率
-    TYPING_THINK_DURATION = 1.0  # 思考暂停时长
-
-    # 等待时间
-    THINK_PAUSE_MIN = 0.5     # 思考暂停最小时间（秒）
-    THINK_PAUSE_MAX = 3.0     # 思考暂停最大时间（秒）
-    PAGE_LOAD_TIMEOUT = 30.0  # 页面加载超时
-    NETWORK_IDLE_TIMEOUT = 5.0  # 网络空闲超时
-
-    # 随机化因子
-    RANDOM_FACTOR = 0.3       # 所有时间的随机变化因子
 
 
 class CDPError(Exception):

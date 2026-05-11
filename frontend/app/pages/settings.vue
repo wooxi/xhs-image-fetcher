@@ -4,170 +4,188 @@
       <meta name="referrer" content="no-referrer" />
     </Head>
 
-    <!-- 顶部导航 - 更精美 -->
+    <!-- 顶部导航 -->
     <header class="sticky top-0 bg-white/95 backdrop-blur-sm shadow-sm z-50 border-b border-gray-100">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-4">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
           <button
             @click="$router.push('/')"
-            class="flex items-center gap-2 text-gray-600 hover:text-xhs-red hover:bg-gray-50 px-3 py-2 rounded-xl transition-all"
+            class="flex items-center gap-1.5 text-gray-500 hover:text-xhs-red hover:bg-gray-50 px-2.5 py-2 rounded-lg transition-all"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            <span class="font-medium">返回首页</span>
+            <span class="text-sm font-medium">返回</span>
           </button>
+          <h1 class="text-lg font-bold text-gray-800">系统设置</h1>
         </div>
 
-        <!-- Tab 切换 - 更精美 -->
-        <div class="flex gap-2">
+        <!-- Tab 切换 -->
+        <div class="flex gap-1 bg-gray-100 rounded-lg p-1">
           <button
             @click="activeTab = 'keywords'"
-            :class="activeTab === 'keywords' ? 'bg-xhs-red text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            class="px-5 py-2.5 rounded-xl transition-all font-medium"
+            :class="activeTab === 'keywords' ? 'bg-white shadow-sm text-xhs-red' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-md transition-all text-sm font-medium"
           >
-            搜索词管理
+            关键词管理
           </button>
           <button
             @click="activeTab = 'logs'; refreshLogs()"
-            :class="activeTab === 'logs' ? 'bg-xhs-red text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-            class="px-5 py-2.5 rounded-xl transition-all font-medium"
+            :class="activeTab === 'logs' ? 'bg-white shadow-sm text-xhs-red' : 'text-gray-500 hover:text-gray-700'"
+            class="px-4 py-1.5 rounded-md transition-all text-sm font-medium flex items-center gap-1"
           >
             执行日志
+            <span v-if="logs.length > 0" class="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded-full bg-xhs-red/10 text-xhs-red">{{ logs.length }}</span>
           </button>
         </div>
 
-        <button
-          v-show="activeTab === 'keywords'"
-          @click="showAddModal = true"
-          class="px-5 py-2.5 bg-xhs-red text-white rounded-xl hover:bg-red-600 transition-all shadow-sm hover:shadow-md flex items-center gap-2 font-medium"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          添加关键词
-        </button>
+        <!-- 调度器控制 -->
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" :class="schedulerStatus?.running ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'">
+            <div :class="schedulerStatus?.running ? 'bg-green-500 animate-pulse' : 'bg-gray-300'" class="w-2 h-2 rounded-full"></div>
+            {{ schedulerStatus?.running ? '运行中' : '未启动' }}
+          </div>
+          <button
+            v-if="schedulerStatus?.running"
+            @click="stopScheduler"
+            :disabled="schedulerLoading"
+            class="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-all font-medium"
+          >
+            停止
+          </button>
+          <button
+            v-else
+            @click="startScheduler"
+            :disabled="schedulerLoading"
+            class="px-3 py-1.5 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-all font-medium"
+          >
+            启动
+          </button>
+          <button
+            v-show="activeTab === 'keywords'"
+            @click="showAddModal = true"
+            class="px-3 py-1.5 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition-all text-xs font-medium flex items-center gap-1"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            添加
+          </button>
+        </div>
       </div>
     </header>
 
     <!-- 内容区域 -->
-    <main class="max-w-7xl mx-auto px-4 py-6">
+    <main class="max-w-7xl mx-auto px-4 py-5">
       <!-- 搜索词 Tab -->
       <div v-show="activeTab === 'keywords'">
         <!-- 加载状态 -->
         <div v-if="pending" class="flex justify-center py-20">
-          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-xhs-red"></div>
+          <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-xhs-red"></div>
         </div>
 
         <!-- 错误状态 -->
-        <div v-else-if="error" class="text-center py-20 text-gray-500">
+        <div v-else-if="error" class="text-center py-20 text-gray-400">
           加载失败，请刷新页面重试
         </div>
 
         <!-- 空状态 -->
         <div v-else-if="keywords.length === 0" class="text-center py-20">
-          <div class="text-gray-400 mb-4">
-            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-            </svg>
-          </div>
-          <p class="text-gray-500 mb-4">暂无配置的搜索词</p>
-          <button 
-            @click="showAddModal = true"
-            class="px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition"
-          >
+          <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <p class="text-gray-400 mb-4">暂无配置的搜索词</p>
+          <button @click="showAddModal = true" class="px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition text-sm">
             添加第一个关键词
           </button>
         </div>
 
-        <!-- 搜索词列表 - 更精美 -->
-        <div v-else class="grid gap-4">
+        <!-- 搜索词列表 -->
+        <div v-else class="grid gap-3 grid-cols-1 md:grid-cols-2">
           <div
             v-for="kw in keywords"
             :key="kw.id"
-            class="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between hover:shadow-lg transition-all duration-300 border border-gray-100"
+            class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all group"
           >
-            <!-- 关键词信息 -->
-            <div class="flex items-center gap-4">
-              <!-- 状态标识 - 更精美 -->
-              <div class="relative">
-                <div
-                  class="w-10 h-10 rounded-xl flex items-center justify-center"
-                  :class="kw.status === 'active' ? 'bg-green-100' : 'bg-gray-100'"
-                >
-                  <svg class="w-5 h-5" :class="kw.status === 'active' ? 'text-green-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <!-- 关键词头部 -->
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" :class="kw.status === 'active' ? 'bg-green-100' : 'bg-gray-100'">
+                  <svg class="w-4 h-4" :class="kw.status === 'active' ? 'text-green-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                 </div>
-                <!-- 自动搜索指示器 -->
-                <div
-                  v-if="kw.auto_search"
-                  class="absolute -top-1 -right-1 w-3 h-3 bg-xhs-red rounded-full animate-pulse"
-                ></div>
+                <div class="min-w-0">
+                  <h3 class="text-sm font-semibold text-gray-900 truncate">{{ kw.keyword }}</h3>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <span v-if="kw.auto_search" class="inline-flex items-center gap-1 text-[11px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      每 {{ formatInterval(kw.search_interval) }}
+                    </span>
+                    <span v-else class="text-[11px] text-gray-400">手动</span>
+                    <span v-if="kw.priority && kw.priority !== 'normal'" class="text-[11px] px-1.5 py-0.5 rounded-full" :class="{ 'bg-yellow-50 text-yellow-600': kw.priority === 'high', 'bg-gray-50 text-gray-500': kw.priority === 'low' }">
+                      {{ kw.priority === 'high' ? '高优先' : '低优先' }}
+                    </span>
+                    <span v-if="kw.retry_count > 0" class="text-[11px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">
+                      失败 {{ kw.retry_count }}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <!-- 关键词文本 -->
-              <div>
-                <h3 class="text-lg font-semibold text-gray-900">{{ kw.keyword }}</h3>
-                <div class="flex items-center gap-2 mt-1 text-sm">
-                  <span v-if="kw.auto_search" class="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- 操作菜单 -->
+              <div class="relative flex-shrink-0">
+                <button
+                  @click="openActionMenu(kw)"
+                  class="p-1.5 rounded-lg hover:bg-gray-100 transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                </button>
+
+                <!-- 下拉菜单 -->
+                <div v-if="actionMenuOpen[kw.id]" class="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                  <button
+                    @click="toggleAutoSearch(kw)"
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                    :class="kw.auto_search ? 'text-green-600' : 'text-gray-600'"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    每 {{ formatInterval(kw.search_interval) }}
-                  </span>
-                  <span v-else class="text-gray-400">手动搜索</span>
-                  <span v-if="kw.last_search_time" class="text-gray-400">
-                    · 上次: {{ formatTime(kw.last_search_time) }}
-                  </span>
+                    {{ kw.auto_search ? '关闭自动' : '开启自动' }}
+                  </button>
+                  <button
+                    @click="triggerSearch(kw)"
+                    :disabled="searchingKeywords.includes(kw.keyword)"
+                    class="w-full text-left px-3 py-2 text-sm text-xhs-red hover:bg-red-50 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <svg class="w-4 h-4" :class="searchingKeywords.includes(kw.keyword) ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
+                  </button>
+                  <hr class="my-1">
+                  <button
+                    @click="confirmDelete(kw)"
+                    class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    删除
+                  </button>
                 </div>
               </div>
             </div>
 
-            <!-- 操作按钮 -->
-            <div class="flex items-center gap-2">
-              <!-- 自动搜索开关 - 更精美 -->
-              <button
-                @click="toggleAutoSearch(kw)"
-                :class="kw.auto_search
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                class="px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-2 font-medium"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                {{ kw.auto_search ? '已开启' : '开启自动' }}
-              </button>
-
-            <!-- 手动搜索 - 更精美 -->
-              <button
-                @click="triggerSearch(kw)"
-                :disabled="searchingKeywords.includes(kw.keyword)"
-                class="px-4 py-2 bg-xhs-red text-white rounded-xl text-sm hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-2 font-medium shadow-sm hover:shadow-md"
-              >
-                <svg
-                  :class="searchingKeywords.includes(kw.keyword) ? 'animate-spin' : ''"
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                </svg>
-                {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
-              </button>
-
-              <!-- 删除 - 更精美 -->
-              <button
-                @click="confirmDelete(kw)"
-                class="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-sm hover:bg-red-100 transition-all flex items-center gap-2 font-medium"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                </svg>
-                删除
-              </button>
+            <!-- 时间信息 -->
+            <div v-if="kw.last_search_time || kw.next_search_time" class="flex items-center gap-3 text-[11px] text-gray-400 bg-gray-50 rounded-lg px-2.5 py-1.5">
+              <span v-if="kw.last_search_time">上次: {{ formatTime(kw.last_search_time) }}</span>
+              <span v-if="kw.next_search_time">下次: {{ formatTime(kw.next_search_time) }}</span>
             </div>
           </div>
         </div>
@@ -175,105 +193,137 @@
 
       <!-- 日志 Tab -->
       <div v-show="activeTab === 'logs'">
-        <!-- 加载状态 -->
-        <div v-if="logsPending" class="flex justify-center py-20">
-          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-xhs-red"></div>
+        <!-- 实时搜索任务面板 -->
+        <div v-if="runningTasks.length > 0" class="mb-5 space-y-3">
+          <div class="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg text-blue-700 text-sm font-medium">
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+            正在执行搜索任务 ({{ runningTasks.length }})
+          </div>
+
+          <div v-for="task in runningTasks" :key="task.id" class="bg-white rounded-xl shadow-sm border border-blue-100 overflow-hidden">
+            <div class="px-4 py-2.5 bg-gradient-to-r from-blue-50 to-gray-50 flex items-center justify-between border-b border-blue-100">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 bg-xhs-red text-white rounded text-xs font-medium">{{ task.keyword }}</span>
+                <span class="text-xs text-gray-400">目标 {{ task.limit }} 条</span>
+              </div>
+              <span class="text-xs text-gray-400">{{ formatTaskTime(task.startTime) }}</span>
+            </div>
+
+            <!-- 进度条 -->
+            <div class="h-1.5 bg-gray-100">
+              <div class="h-full bg-blue-500 transition-all duration-300 rounded-r" :style="{ width: `${Math.min(100, (task.postsInserted / Math.max(task.limit, 1)) * 100)}%` }"></div>
+            </div>
+
+            <!-- 统计数据 -->
+            <div class="grid grid-cols-4 gap-2 px-4 py-2 bg-gray-50 text-center">
+              <div><span class="text-sm font-bold text-gray-700">{{ task.postsFound }}</span><span class="text-[11px] text-gray-400 block">发现</span></div>
+              <div><span class="text-sm font-bold text-green-600">{{ task.postsInserted }}</span><span class="text-[11px] text-gray-400 block">入库</span></div>
+              <div><span class="text-sm font-bold text-blue-600">{{ task.imagesUploaded }}</span><span class="text-[11px] text-gray-400 block">上传</span></div>
+              <div><span class="text-sm font-bold text-red-500">{{ task.imagesFailed }}</span><span class="text-[11px] text-gray-400 block">失败</span></div>
+            </div>
+
+            <!-- 实时日志 -->
+            <div class="px-4 py-2 max-h-48 overflow-y-auto bg-gray-900 text-gray-100 font-mono text-xs">
+              <div v-for="(log, i) in task.logs.slice(-30)" :key="i" class="py-0.5" :class="{ 'text-green-400': log.type === 'success', 'text-red-400': log.type === 'error' }">
+                <span class="text-gray-500">[{{ log.time }}]</span> {{ log.message }}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- 错误状态 -->
-        <div v-else-if="logsError" class="text-center py-20 text-gray-500">
-          加载日志失败，请刷新重试
-        </div>
-
-        <!-- 空状态 -->
-        <div v-else-if="logs.length === 0" class="text-center py-20">
-          <div class="text-gray-400 mb-4">
-            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        <!-- 日志过滤 -->
+        <div class="mb-4 flex items-center gap-3">
+          <div class="relative flex-1 max-w-xs">
+            <input
+              v-model="logFilter"
+              type="text"
+              placeholder="过滤关键词..."
+              class="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-xhs-red/30 focus:border-xhs-red"
+            />
+            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
           </div>
-          <p class="text-gray-500 mb-4">暂无搜索日志</p>
-          <p class="text-sm text-gray-400">执行搜索后会自动记录日志</p>
+          <button @click="refreshLogs()" class="px-3 py-2 text-sm text-xhs-red hover:bg-red-50 rounded-lg transition-all">
+            刷新
+          </button>
         </div>
 
-        <!-- 日志列表 - 更精美 -->
-        <div v-else class="space-y-4">
-          <!-- 日志卡片 -->
+        <!-- 加载/错误/空状态 -->
+        <div v-if="logsPending" class="flex justify-center py-20">
+          <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-xhs-red"></div>
+        </div>
+
+        <div v-else-if="logsError" class="text-center py-20 text-gray-400">
+          加载失败，请刷新重试
+        </div>
+
+        <div v-else-if="filteredLogs.length === 0" class="text-center py-16 text-gray-400">
+          <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <p class="text-sm">暂无搜索日志</p>
+        </div>
+
+        <!-- 日志列表 -->
+        <div v-else class="space-y-3">
           <div
-            v-for="log in logs"
+            v-for="log in filteredLogs"
             :key="log.id"
-            class="bg-white rounded-xl shadow-sm p-5 hover:shadow-lg transition-all duration-300 border border-gray-100"
+            class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all"
           >
-            <!-- 头部：关键词和时间 -->
-            <div class="flex items-center justify-between mb-4">
-              <div class="flex items-center gap-3">
-                <span class="px-3 py-1.5 bg-xhs-red/10 text-xhs-red rounded-lg text-sm font-semibold">
-                  {{ log.keyword }}
-                </span>
-                <span
-                  v-if="log.error_message"
-                  class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-sm flex items-center gap-1"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
-                  </svg>
-                  错误
-                </span>
-                <span
-                  v-else
-                  class="px-3 py-1.5 bg-green-100 text-green-600 rounded-lg text-sm flex items-center gap-1"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                  成功
-                </span>
+            <div class="px-4 py-3">
+              <!-- 头部 -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="px-2.5 py-0.5 bg-xhs-red/10 text-xhs-red rounded-md text-xs font-semibold">{{ log.keyword }}</span>
+                  <span v-if="log.error_message" class="px-2 py-0.5 bg-red-100 text-red-600 rounded-md text-[11px] flex items-center gap-0.5">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
+                    失败
+                  </span>
+                  <span v-else class="px-2 py-0.5 bg-green-100 text-green-600 rounded-md text-[11px] flex items-center gap-0.5">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg>
+                    成功
+                  </span>
+                </div>
+                <span class="text-[11px] text-gray-400">{{ formatLogTime(log.created_at) }}</span>
               </div>
-              <span class="text-sm text-gray-400 bg-gray-50 px-2 py-1 rounded">
-                {{ formatLogTime(log.created_at) }}
-              </span>
-            </div>
 
-            <!-- 统计数据 - 更精美 -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <!-- 帖子统计 -->
-              <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 text-center">
-                <div class="text-2xl font-bold text-gray-800">{{ log.posts_found }}</div>
-                <div class="text-xs text-gray-500 mt-1">发现帖子</div>
+              <!-- 统计 -->
+              <div class="flex items-center gap-4 mt-3">
+                <div class="text-center"><span class="text-base font-bold text-gray-700">{{ log.posts_found }}</span><span class="text-[10px] text-gray-400 block">发现</span></div>
+                <div class="text-center"><span class="text-base font-bold text-green-600">{{ log.posts_inserted }}</span><span class="text-[10px] text-gray-400 block">入库</span></div>
+                <div class="text-center"><span class="text-base font-bold text-blue-600">{{ log.images_uploaded }}</span><span class="text-[10px] text-gray-400 block">上传</span></div>
+                <div class="text-center"><span class="text-base font-bold text-orange-600">{{ log.duration_seconds }}s</span><span class="text-[10px] text-gray-400 block">耗时</span></div>
+                <span v-if="log.posts_skipped" class="text-[11px] text-gray-400">跳过 {{ log.posts_skipped }}</span>
               </div>
-              <!-- 入库统计 -->
-              <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center">
-                <div class="text-2xl font-bold text-green-600">{{ log.posts_inserted }}</div>
-                <div class="text-xs text-green-600/70 mt-1">成功入库</div>
-              </div>
-              <!-- 图片上传 -->
-              <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 text-center">
-                <div class="text-2xl font-bold text-blue-600">{{ log.images_uploaded }}</div>
-                <div class="text-xs text-blue-600/70 mt-1">图片上传</div>
-              </div>
-              <!-- 耗时 -->
-              <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 text-center">
-                <div class="text-2xl font-bold text-orange-600">{{ log.duration_seconds }}s</div>
-                <div class="text-xs text-orange-600/70 mt-1">执行耗时</div>
-              </div>
-            </div>
 
-            <!-- 详细信息（可展开） -->
-            <div class="mt-3 text-sm text-gray-500 flex gap-4">
-              <span v-if="log.posts_skipped > 0">
-                跳过重复: {{ log.posts_skipped }}
-              </span>
-              <span v-if="log.images_found > 0">
-                发现图片: {{ log.images_found }}
-              </span>
-              <span v-if="log.images_failed > 0">
-                上传失败: {{ log.images_failed }}
-              </span>
-            </div>
+              <!-- 错误信息 -->
+              <div v-if="log.error_message" class="mt-2 p-2 bg-red-50 rounded text-red-600 text-xs">{{ log.error_message }}</div>
 
-            <!-- 错误信息 -->
-            <div v-if="log.error_message" class="mt-3 p-2 bg-red-50 rounded text-red-600 text-sm">
-              {{ log.error_message }}
+              <!-- 展开详情 -->
+              <button
+                @click="toggleLogDetail(log.id)"
+                class="mt-2 text-xs text-xhs-red hover:text-red-600 flex items-center gap-1"
+              >
+                <svg class="w-3.5 h-3.5 transition-transform" :class="expandedLogs[log.id] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                {{ expandedLogs[log.id] ? '收起' : '详情' }}
+              </button>
+
+              <!-- 内联详情日志 -->
+              <div v-if="expandedLogs[log.id] && log.execution_id" class="mt-2 border border-gray-100 rounded-lg overflow-hidden">
+                <div v-if="logDetailCache[log.execution_id]?.loading" class="flex justify-center py-4">
+                  <div class="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-xhs-red"></div>
+                </div>
+                <div v-else-if="logDetailCache[log.execution_id]?.logs?.length > 0" class="max-h-60 overflow-y-auto bg-gray-900 text-gray-100 font-mono text-xs px-3 py-2">
+                  <div v-for="(dl, i) in logDetailCache[log.execution_id].logs" :key="i" class="py-0.5" :class="{ 'text-green-400': dl.log_type === 'success', 'text-red-400': dl.log_type === 'error', 'text-blue-300': dl.log_type === 'info' }">
+                    <span class="text-gray-500">[{{ formatLogDetailTime(dl.created_at) }}]</span> {{ dl.message }}
+                  </div>
+                </div>
+                <div v-else class="text-center py-4 text-gray-400 text-xs">暂无详细日志</div>
+              </div>
             </div>
           </div>
         </div>
@@ -281,77 +331,55 @@
     </main>
 
     <!-- 添加关键词模态框 -->
-    <div 
+    <div
       v-if="showAddModal"
       class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
       @click.self="showAddModal = false"
     >
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <h2 class="text-lg font-bold text-gray-800 mb-4">添加搜索关键词</h2>
-        
-        <div class="space-y-4">
-          <!-- 关键词输入 -->
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+        <h2 class="text-base font-bold text-gray-800 mb-4">添加搜索关键词</h2>
+
+        <div class="space-y-3">
           <div>
-            <label class="block text-sm text-gray-600 mb-1">关键词</label>
-            <input 
+            <label class="block text-sm text-gray-500 mb-1">关键词</label>
+            <input
               v-model="newKeyword"
               type="text"
               placeholder="输入搜索关键词..."
-              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-xhs-red"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-xhs-red/30 focus:border-xhs-red"
             />
           </div>
-          
-          <!-- 自动搜索开关 -->
+
           <div class="flex items-center justify-between">
             <div>
-              <label class="block text-sm text-gray-600">启用自动搜索</label>
-              <p class="text-xs text-gray-400">开启后将按设定间隔自动搜索</p>
+              <div class="text-sm text-gray-700">启用自动搜索</div>
+              <p class="text-[11px] text-gray-400">按设定间隔自动搜索</p>
             </div>
-            <button 
+            <button
               @click="newAutoSearch = !newAutoSearch"
               :class="newAutoSearch ? 'bg-xhs-red' : 'bg-gray-300'"
-              class="w-12 h-6 rounded-full transition relative"
+              class="w-10 h-5 rounded-full transition relative"
             >
-              <div 
-                :class="newAutoSearch ? 'right-1' : 'left-1'"
-                class="w-4 h-4 bg-white rounded-full absolute top-1 transition-all"
+              <div
+                :class="newAutoSearch ? 'right-0.5' : 'left-0.5'"
+                class="w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all"
               ></div>
             </button>
           </div>
-          
-          <!-- 搜索间隔 -->
+
           <div v-if="newAutoSearch">
-            <label class="block text-sm text-gray-600 mb-1">搜索间隔（小时）</label>
-            <select 
-              v-model="newInterval"
-              class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-xhs-red"
-            >
-              <option value="0.1">每 6 分钟 (0.1 小时)</option>
-              <option value="0.25">每 15 分钟 (0.25 小时)</option>
-              <option value="0.5">每 30 分钟 (0.5 小时)</option>
-              <option value="1">每 1 小时</option>
-              <option value="2">每 2 小时</option>
-              <option value="6">每 6 小时</option>
-              <option value="12">每 12 小时</option>
-              <option value="24">每 24 小时</option>
-              <option value="48">每 48 小时</option>
-            </select>
+            <label class="block text-sm text-gray-500 mb-1">搜索间隔</label>
+            <div class="flex gap-1.5 flex-wrap">
+              <button v-for="opt in intervalOptions" :key="opt.value" @click="newInterval = opt.value" class="px-2.5 py-1 text-xs rounded-lg border transition-all" :class="newInterval === opt.value ? 'bg-xhs-red text-white border-xhs-red' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300'">
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
         </div>
-        
-        <!-- 操作按钮 -->
-        <div class="flex justify-end gap-3 mt-6">
-          <button 
-            @click="showAddModal = false"
-            class="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-          >
-            取消
-          </button>
-          <button 
-            @click="addKeyword"
-            :disabled="!newKeyword.trim() || adding"
-            class="px-4 py-2 bg-xhs-red text-white rounded-lg hover:bg-red-600 transition disabled:opacity-50"
-          >
+
+        <div class="flex justify-end gap-2 mt-4">
+          <button @click="showAddModal = false" class="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 transition">取消</button>
+          <button @click="addKeyword" :disabled="!newKeyword.trim() || adding" class="px-3 py-1.5 bg-xhs-red text-white rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50">
             {{ adding ? '添加中...' : '添加' }}
           </button>
         </div>
@@ -359,42 +387,64 @@
     </div>
 
     <!-- 删除确认模态框 -->
-    <div 
+    <div
       v-if="deleteTarget"
       class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
       @click.self="deleteTarget = null"
     >
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-center">
-        <div class="text-red-500 mb-4">
-          <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
-          </svg>
-        </div>
-        <h2 class="text-lg font-bold text-gray-800 mb-2">确认删除</h2>
-        <p class="text-gray-600 mb-4">
-          确定要删除关键词 "{{ deleteTarget.keyword }}" 吗？
-        </p>
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 text-center">
+        <svg class="w-10 h-10 mx-auto text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
+        </svg>
+        <h2 class="text-base font-bold text-gray-800 mb-1">确认删除</h2>
+        <p class="text-sm text-gray-500 mb-4">确定要删除关键词 "{{ deleteTarget.keyword }}" 吗？</p>
         <div class="flex justify-center gap-3">
-          <button 
-            @click="deleteTarget = null"
-            class="px-4 py-2 text-gray-600 hover:text-gray-800 transition"
-          >
-            取消
-          </button>
-          <button 
-            @click="deleteKeyword"
-            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-          >
-            删除
-          </button>
+          <button @click="deleteTarget = null" class="px-4 py-1.5 text-sm text-gray-500 hover:text-gray-700 transition">取消</button>
+          <button @click="deleteKeyword" class="px-4 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition">删除</button>
         </div>
       </div>
     </div>
 
+    <!-- 日志详情模态框 -->
+    <div
+      v-if="logDetail.show"
+      class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
+      @click.self="logDetail.show = false"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="px-5 py-3 border-b flex items-center justify-between bg-gray-50">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 bg-xhs-red/10 text-xhs-red rounded-md text-xs font-semibold">{{ logDetail.summary?.keyword }}</span>
+            <span class="text-xs text-gray-400">{{ logDetail.logs?.length || 0 }} 条日志</span>
+          </div>
+          <button @click="logDetail.show = false" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div v-if="logDetail.summary" class="px-5 py-3 border-b bg-gray-50">
+          <div class="grid grid-cols-5 gap-3 text-center">
+            <div><span class="text-sm font-bold text-gray-700">{{ logDetail.summary.posts_found }}</span><span class="text-[10px] text-gray-400 block">发现</span></div>
+            <div><span class="text-sm font-bold text-green-600">{{ logDetail.summary.posts_inserted }}</span><span class="text-[10px] text-gray-400 block">入库</span></div>
+            <div><span class="text-sm font-bold text-blue-600">{{ logDetail.summary.images_uploaded }}</span><span class="text-[10px] text-gray-400 block">上传</span></div>
+            <div><span class="text-sm font-bold text-red-500">{{ logDetail.summary.images_failed }}</span><span class="text-[10px] text-gray-400 block">失败</span></div>
+            <div><span class="text-sm font-bold text-orange-600">{{ logDetail.summary.duration_seconds }}s</span><span class="text-[10px] text-gray-400 block">耗时</span></div>
+          </div>
+          <div v-if="logDetail.summary.error_message" class="mt-2 p-2 bg-red-50 rounded text-red-600 text-xs">{{ logDetail.summary.error_message }}</div>
+        </div>
+        <div v-if="logDetail.logs?.length > 0" class="flex-1 overflow-y-auto px-4 py-3 bg-gray-900 text-gray-100 font-mono text-xs">
+          <div v-for="(log, i) in logDetail.logs" :key="log.id || i" class="py-0.5" :class="{ 'text-green-400': log.log_type === 'success', 'text-red-400': log.log_type === 'error', 'text-blue-300': log.log_type === 'info', 'text-yellow-300': log.log_type === 'image' }">
+            <span class="text-gray-500 text-[10px]">{{ formatLogDetailTime(log.created_at) }}</span>
+            <span class="ml-2">{{ log.message }}</span>
+          </div>
+        </div>
+        <div v-else-if="!logDetail.loading" class="flex-1 flex items-center justify-center text-gray-400 text-sm">暂无详细日志</div>
+      </div>
+    </div>
+
     <!-- 提示消息 -->
-    <div 
+    <div
       v-if="toast.show"
-      class="fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-lg shadow-lg transition-all"
+      class="fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-lg shadow-lg transition-all text-sm"
       :class="toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'"
     >
       {{ toast.message }}
@@ -410,22 +460,100 @@ interface Keyword {
   auto_search: boolean
   search_interval: number
   last_search_time: string | null
+  priority: string
+  retry_count: number
+  last_error: string | null
+  next_search_time: string | null
   created_at: string
   updated_at: string
 }
 
 const router = useRouter()
 
-// Tab 切换
 const activeTab = ref<'keywords' | 'logs'>('keywords')
 
-// 获取搜索词列表
 const { data, pending, error, refresh } = await useFetch('/api/keywords')
 const keywords = computed(() => data.value?.keywords || [])
 
-// 获取搜索日志
 const { data: logsData, pending: logsPending, error: logsError, refresh: refreshLogs } = await useFetch('/api/logs', { lazy: true })
 const logs = computed(() => logsData.value?.logs || [])
+
+// 日志过滤
+const logFilter = ref('')
+const filteredLogs = computed(() => {
+  if (!logFilter.value) return logs.value
+  const kw = logFilter.value.toLowerCase()
+  return logs.value.filter((l: any) => l.keyword?.toLowerCase().includes(kw))
+})
+
+// 展开日志详情
+const expandedLogs = ref<Record<number, boolean>>({})
+const logDetailCache = ref<Record<string, { loading: boolean; logs: any[] }>>({})
+
+const toggleLogDetail = async (logId: number) => {
+  expandedLogs.value[logId] = !expandedLogs.value[logId]
+  const log = logs.value.find((l: any) => l.id === logId)
+  if (!log || !log.execution_id) return
+
+  const eid = log.execution_id
+  if (logDetailCache.value[eid]) return
+
+  logDetailCache.value[eid] = { loading: true, logs: [] }
+  try {
+    const res = await $fetch(`/api/logs/detail?execution_id=${eid}`)
+    if (res.success) {
+      logDetailCache.value[eid] = { loading: false, logs: res.logs || [] }
+    }
+  } catch {
+    logDetailCache.value[eid] = { loading: false, logs: [] }
+  }
+}
+
+// 调度器状态
+const schedulerStatus = ref<{ running: boolean; pid?: number; uptime?: number } | null>(null)
+const schedulerLoading = ref(false)
+const fetchSchedulerStatus = async () => {
+  try {
+    const res = await $fetch('/api/scheduler/status')
+    schedulerStatus.value = res
+  } catch {
+    schedulerStatus.value = { running: false }
+  }
+}
+fetchSchedulerStatus()
+setInterval(fetchSchedulerStatus, 30000)
+
+const startScheduler = async () => {
+  schedulerLoading.value = true
+  try {
+    const res = await $fetch('/api/scheduler/start', { method: 'POST' })
+    if (res.success) {
+      showToast('调度器已启动', 'success')
+      fetchSchedulerStatus()
+    } else {
+      showToast(res.error || '启动失败', 'error')
+    }
+  } catch (e: any) {
+    showToast(e.message || '启动失败', 'error')
+  }
+  schedulerLoading.value = false
+}
+
+const stopScheduler = async () => {
+  schedulerLoading.value = true
+  try {
+    const res = await $fetch('/api/scheduler/stop', { method: 'POST' })
+    if (res.success) {
+      showToast('调度器已停止', 'success')
+      fetchSchedulerStatus()
+    } else {
+      showToast(res.error || '停止失败', 'error')
+    }
+  } catch (e: any) {
+    showToast(e.message || '停止失败', 'error')
+  }
+  schedulerLoading.value = false
+}
 
 // 添加关键词
 const showAddModal = ref(false)
@@ -434,9 +562,19 @@ const newAutoSearch = ref(false)
 const newInterval = ref(1)
 const adding = ref(false)
 
+const intervalOptions = [
+  { label: '6分钟', value: 0.1 },
+  { label: '15分钟', value: 0.25 },
+  { label: '30分钟', value: 0.5 },
+  { label: '1小时', value: 1 },
+  { label: '2小时', value: 2 },
+  { label: '6小时', value: 6 },
+  { label: '12小时', value: 12 },
+  { label: '24小时', value: 24 },
+]
+
 const addKeyword = async () => {
   if (!newKeyword.value.trim()) return
-  
   adding.value = true
   try {
     const res = await $fetch('/api/keywords', {
@@ -447,7 +585,6 @@ const addKeyword = async () => {
         search_interval: newInterval.value
       }
     })
-    
     if (res.success) {
       showToast('添加成功', 'success')
       showAddModal.value = false
@@ -469,17 +606,16 @@ const deleteTarget = ref<Keyword | null>(null)
 
 const confirmDelete = (kw: Keyword) => {
   deleteTarget.value = kw
+  actionMenuOpen.value[kw.id] = false
 }
 
 const deleteKeyword = async () => {
   if (!deleteTarget.value) return
-  
   try {
     const res = await $fetch('/api/keywords', {
       method: 'DELETE',
       body: { keyword: deleteTarget.value.keyword }
     })
-    
     if (res.success) {
       showToast('删除成功', 'success')
       deleteTarget.value = null
@@ -494,6 +630,7 @@ const deleteKeyword = async () => {
 
 // 切换自动搜索
 const toggleAutoSearch = async (kw: Keyword) => {
+  actionMenuOpen.value[kw.id] = false
   try {
     const res = await $fetch('/api/keywords', {
       method: 'PATCH',
@@ -503,7 +640,6 @@ const toggleAutoSearch = async (kw: Keyword) => {
         search_interval: kw.search_interval
       }
     })
-    
     if (res.success) {
       showToast(kw.auto_search ? '已关闭自动搜索' : '已开启自动搜索', 'success')
       refresh()
@@ -520,33 +656,39 @@ const searchingKeywords = ref<string[]>([])
 
 const triggerSearch = async (kw: Keyword) => {
   if (searchingKeywords.value.includes(kw.keyword)) return
-  
+  actionMenuOpen.value[kw.id] = false
+
   searchingKeywords.value.push(kw.keyword)
-  
   try {
-    const res = await $fetch('/api/search/trigger', {
-      method: 'POST',
-      body: {
-        keyword: kw.keyword,
-        limit: 10
-      }
-    })
-    
+    const res = await $fetch('/api/search/realtime?action=start&keyword=' + encodeURIComponent(kw.keyword) + '&limit=2&upload=true')
     if (res.success) {
       showToast('搜索任务已启动', 'success')
-      // 延迟刷新以更新上次搜索时间
-      setTimeout(() => refresh(), 2000)
+      startTaskPolling()
+      activeTab.value = 'logs'
+      setTimeout(() => refresh(), 3000)
     } else {
       showToast(res.error || '触发失败', 'error')
     }
   } catch (e: any) {
     showToast(e.message || '触发失败', 'error')
   }
-  
-  // 5秒后移除搜索状态
   setTimeout(() => {
     searchingKeywords.value = searchingKeywords.value.filter(k => k !== kw.keyword)
-  }, 5000)
+  }, 10000)
+}
+
+// 操作菜单
+const actionMenuOpen = ref<Record<number, boolean>>({})
+
+const openActionMenu = (kw: Keyword) => {
+  // 关闭其他菜单
+  actionMenuOpen.value = {}
+  actionMenuOpen.value[kw.id] = !actionMenuOpen.value[kw.id]
+}
+
+// 点击外部关闭菜单
+const closeActionMenus = () => {
+  actionMenuOpen.value = {}
 }
 
 // 格式化搜索间隔
@@ -561,36 +703,36 @@ const formatInterval = (hours: number) => {
   }
 }
 
-// 格式化时间
 const formatTime = (time: string | null) => {
   if (!time) return ''
   const d = new Date(time)
   const now = new Date()
   const diff = now.getTime() - d.getTime()
-  
   if (diff < 60000) return '刚刚'
   if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
   return `${Math.floor(diff / 86400000)} 天前`
 }
 
-// 格式化日志时间
 const formatLogTime = (time: string) => {
   if (!time) return ''
   const d = new Date(time)
   const now = new Date()
   const diff = now.getTime() - d.getTime()
-  
-  // 详细时间格式
   const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-  
-  if (diff < 60000) return `刚刚 (${dateStr})`
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前 (${dateStr})`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前 (${dateStr})`
-  return `${Math.floor(diff / 86400000)} 天前 (${dateStr})`
+  if (diff < 60000) return `刚刚`
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
+  return `${dateStr}`
 }
 
-// Toast 提示
+const formatLogDetailTime = (time: string) => {
+  if (!time) return ''
+  const d = new Date(time)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
+}
+
+// Toast
 const toast = ref({ show: false, message: '', type: 'success' as 'success' | 'error' })
 
 const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -599,8 +741,128 @@ const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     toast.value.show = false
   }, 3000)
 }
+
+// 日志详情模态框
+const logDetail = ref({
+  show: false,
+  loading: false,
+  execution_id: '',
+  summary: null as any,
+  logs: [] as Array<{ id: number; execution_id: string; keyword: string; log_type: string; message: string; created_at: string }>
+})
+
+const showLogDetail = async (log: any) => {
+  logDetail.value = {
+    show: true,
+    loading: true,
+    execution_id: log.execution_id || '',
+    summary: null,
+    logs: []
+  }
+  if (!log.execution_id) {
+    logDetail.value.execution_id = `legacy_${log.id}`
+    logDetail.value.summary = {
+      keyword: log.keyword,
+      posts_found: log.posts_found,
+      posts_inserted: log.posts_inserted,
+      posts_skipped: log.posts_skipped,
+      images_uploaded: log.images_uploaded,
+      images_failed: log.images_failed,
+      duration_seconds: log.duration_seconds,
+      error_message: log.error_message
+    }
+    logDetail.value.loading = false
+    return
+  }
+  try {
+    const res = await $fetch(`/api/logs/detail?execution_id=${log.execution_id}`)
+    if (res.success) {
+      logDetail.value.summary = res.summary
+      logDetail.value.logs = res.logs || []
+    } else {
+      showToast(res.error || '获取详情失败', 'error')
+      logDetail.value.show = false
+    }
+  } catch (e: any) {
+    showToast(e.message || '获取详情失败', 'error')
+    logDetail.value.show = false
+  }
+  logDetail.value.loading = false
+}
+
+// 实时任务
+interface SearchTask {
+  id: string
+  keyword: string
+  limit: number
+  status: 'running' | 'completed' | 'failed'
+  logs: Array<{ time: string; message: string; type: 'info' | 'success' | 'error' }>
+  startTime: Date
+  endTime?: Date
+  postsFound: number
+  postsInserted: number
+  imagesUploaded: number
+  imagesFailed: number
+}
+
+const runningTasks = ref<SearchTask[]>([])
+let taskPollTimer: NodeJS.Timeout | null = null
+
+const pollTaskStatus = async () => {
+  try {
+    const res = await $fetch('/api/search/realtime?action=status')
+    if (res.success && res.tasks) {
+      runningTasks.value = res.tasks
+    } else {
+      runningTasks.value = []
+    }
+  } catch {
+    runningTasks.value = []
+  }
+}
+
+const startTaskPolling = () => {
+  if (taskPollTimer) return
+  pollTaskStatus()
+  taskPollTimer = setInterval(pollTaskStatus, 2000)
+}
+
+const stopTaskPolling = () => {
+  if (taskPollTimer) {
+    clearInterval(taskPollTimer)
+    taskPollTimer = null
+  }
+}
+
+const formatTaskTime = (time: Date | string) => {
+  const d = new Date(time)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
+}
+
+watch(activeTab, (newTab) => {
+  if (newTab === 'logs') {
+    startTaskPolling()
+  } else {
+    stopTaskPolling()
+  }
+})
+
+onUnmounted(() => {
+  stopTaskPolling()
+})
+
+// 点击外部关闭操作菜单
+onMounted(() => {
+  document.addEventListener('click', closeActionMenus)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', closeActionMenus)
+})
 </script>
 
 <style scoped>
-/* 添加一些自定义样式 */
+/* 阻止点击事件穿透到内部元素时关闭菜单 */
+button, a, input, select {
+  cursor: pointer;
+}
 </style>

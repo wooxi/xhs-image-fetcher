@@ -5,6 +5,19 @@
 
 cd "$(dirname "$0")"
 
+# 加载项目根目录的 .env 文件
+if [ -f "../.env" ]; then
+  echo "[+] 加载环境变量..."
+  # 使用 while-read 代替 source，避免特殊字符（如 |）被 bash 解释
+  while IFS='=' read -r key value; do
+    # 跳过空行和注释
+    [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+    # 去除行尾回车符
+    value=$(echo "$value" | tr -d '\r')
+    export "$key=$value"
+  done < "../.env"
+fi
+
 echo "===== 小红书摄影展示网站启动脚本 ====="
 
 # 检查 node_modules

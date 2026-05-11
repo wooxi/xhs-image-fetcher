@@ -12,13 +12,13 @@ LOG_DIR="$PROJECT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
 # 是否启动调度器（可选）
-START_SCHEDULER=${1:-"no"}  # 默认不启动，传入 "scheduler" 参数启动
+START_SCHEDULER=${1:-"scheduler"}  # 默认启动调度器，传入 "no" 参数不启动
 
 echo "===== XHS Project 启动脚本 ====="
 echo ""
 
 # 启动前端 Nuxt（包含所有API）
-echo "启动前端服务 (端口 3000)..."
+echo "启动前端服务 (端口 5020)..."
 cd "$FRONTEND_DIR"
 nohup ./start.sh > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
@@ -36,6 +36,8 @@ if [ "$START_SCHEDULER" = "scheduler" ]; then
     nohup python main.py start-scheduler > "$LOG_DIR/scheduler.log" 2>&1 &
     SCHEDULER_PID=$!
     echo "调度器 PID: $SCHEDULER_PID"
+    # 写入调度器PID文件
+    echo "$SCHEDULER_PID" > "$PROJECT_DIR/.scheduler.pid"
 fi
 
 echo ""
@@ -48,9 +50,9 @@ if [ "$START_SCHEDULER" = "scheduler" ]; then
 fi
 echo ""
 echo "使用说明:"
-echo "  - 访问 http://192.168.100.6:3000 打开网站"
+echo "  - 访问 http://192.168.100.6:5020 打开网站"
 echo "  - 前端API已集成在Nuxt服务中，无需单独后端"
-echo "  - 如需自动定时搜索，运行: ./start.sh scheduler"
+echo "  - 调度器默认启动，如不需要: ./start.sh no"
 echo ""
 
 # 保存PID

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise'
+import { getPool, formatDateTime } from '../utils/db'
 
 interface Post {
   id: number
@@ -14,61 +14,64 @@ interface Post {
   publish_time: string
 }
 
-// 数据库配置 - 直接从环境变量读取
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
-
 export default defineEventHandler(async (event) => {
-  // 获取查询参数
   const query = getQuery(event)
   const page = Number(query.page) || 1
   const pageSize = Number(query.pageSize) || 20
   const keyword = (query.keyword as string) || ''
-  
+
   const offset = (page - 1) * pageSize
-  
-  // 创建数据库连接
-  const connection = await mysql.createConnection(dbConfig)
-  
+  const pool = getPool()
+
   try {
-    // 构建基础查询
     let baseWhere = ''
     let params: any[] = []
-    
+
     if (keyword && keyword.trim()) {
       const kw = keyword.trim()
       baseWhere = 'WHERE title LIKE ? OR keyword LIKE ? OR author_name LIKE ?'
       params = [`%${kw}%`, `%${kw}%`, `%${kw}%`]
     }
-    
-    // 查询总数
+
     const countSql = `SELECT COUNT(*) as total FROM notes ${baseWhere}`
-    const [countRows] = await connection.execute(countSql, params)
+    const [countRows] = await pool.query(countSql, params)
     const total = (countRows as any[])[0].total
-    
-    // 查询数据 - LIMIT OFFSET 直接拼接（安全数字）
-    const dataSql = `SELECT 
-      id, title, content, url, images, 
-      likes, collects, comments, author_name, 
+
+    const dataSql = `SELECT
+      id, title, content, url, images,
+      likes, collects, comments, author_name,
       keyword, publish_time
-     FROM notes 
+     FROM notes
      ${baseWhere}
-     ORDER BY publish_time DESC 
-     LIMIT ${pageSize} OFFSET ${offset}`
-    
-    const [rows] = await connection.execute(dataSql, params)
-    
-    // 处理 images JSON 字段
-    const posts: Post[] = (rows as any[]).map(row => ({
-      ...row,
-      images: typeof row.images === 'string' ? JSON.parse(row.images || '[]') : row.images || []
-    }))
-    
+     ORDER BY publish_time DESC
+     LIMIT ? OFFSET ?`
+
+    const [rows] = await pool.query(dataSql, [...params, pageSize, offset])
+
+    const posts: Post[] = (rows as any[]).map(row => {
+      let imagesData = row.images
+      if (typeof imagesData === 'string') {
+        try {
+          imagesData = JSON.parse(imagesData || '[]')
+        } catch {
+          imagesData = []
+        }
+      }
+      if (!Array.isArray(imagesData)) {
+        imagesData = []
+      }
+      const normalizedImages = imagesData.map((item: any) => {
+        if (typeof item === 'string') return item
+        if (typeof item === 'object' && item.url) return item.url
+        return null
+      }).filter(Boolean) as string[]
+
+      return {
+        ...row,
+        images: normalizedImages
+      }
+    })
+
     return {
       posts,
       total,
@@ -76,6 +79,6 @@ export default defineEventHandler(async (event) => {
       pageSize
     }
   } finally {
-    await connection.end()
+    // 连接池不需要手动关闭
   }
 })

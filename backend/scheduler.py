@@ -17,6 +17,7 @@ import random
 import time
 import signal
 import sys
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
@@ -41,59 +42,13 @@ except ImportError:
     print("[scheduler] 警告: 无法导入 image_processor 模块，图片上传功能不可用")
     ImageUploader = None
 
-
-class SchedulerConfig:
-    """调度器配置（精细时间控制）。"""
-
-    # 检查间隔：每分钟检查一次（精细化控制）
-    CHECK_INTERVAL_SECONDS = 60
-
-    # 基础周期：10分钟（作为随机等待的基准）
-    BASE_CYCLE_SECONDS = 600
-
-    # 随机等待范围（周期开始前，防封号）
-    RANDOM_WAIT_MIN = 0
-    RANDOM_WAIT_MAX = 300  # 0-5分钟随机等待
-
-    # 搜索间隔随机等待（防封号）
-    SEARCH_DELAY_MIN = 3
-    SEARCH_DELAY_MAX = 8
-
-    # 详情获取间隔
-    DETAIL_DELAY_MIN = 2
-    DETAIL_DELAY_MAX = 5
-
-    # 每次搜索帖子数
-    SEARCH_LIMIT = 10
-
-    # 图片上传间隔
-    IMAGE_UPLOAD_DELAY = 0.5
-
-    # ==================== 高峰时段规避 ====================
-
-    # 高峰时段（小红书用户活跃高峰）
-    # (开始小时, 结束小时)
-    PEAK_HOURS = [(12, 14), (18, 22)]
-
-    # 高峰时段延迟倍数（高峰时更慢）
-    PEAK_DELAY_MULTIPLIER = 2.5
-
-    # 是否启用高峰规避
-    PEAK_AVOIDANCE_ENABLED = True
-
-    # ==================== 重试机制 ====================
-
-    # 最大重试次数
-    MAX_RETRIES = 3
-
-    # 重试退避基数（指数退避）
-    RETRY_BACKOFF_BASE = 2.0
-
-    # 最大重试延迟（秒）
-    RETRY_DELAY_MAX = 3600  # 1小时
-
-    # 重试失败后降低优先级
-    RETRY_PRIORITY_DOWNGRADE = True
+# 导入统一配置
+try:
+    from config import SchedulerConfig
+    _USE_UNIFIED_CONFIG = True
+except ImportError:
+    print("[scheduler] 警告: 无法导入 config.SchedulerConfig，使用本地配置")
+    _USE_UNIFIED_CONFIG = False
 
 
 class TaskQueueManager:
@@ -198,7 +153,7 @@ def is_peak_time() -> bool:
 
     current_hour = datetime.now().hour
 
-    for start, end in SchedulerConfig.PEAK_HOURS:
+    for start, end in SchedulerConfig.get_peak_hours():
         if start <= current_hour < end:
             return True
 
@@ -239,7 +194,7 @@ def calculate_next_search_time(interval_hours: float, last_time: datetime = None
     # 如果计算出的时间在高峰时段，尝试推迟到高峰结束后
     if is_peak_time() and SchedulerConfig.PEAK_AVOIDANCE_ENABLED:
         current_hour = datetime.now().hour
-        for start, end in SchedulerConfig.PEAK_HOURS:
+        for start, end in SchedulerConfig.get_peak_hours():
             if start <= next_time.hour < end:
                 # 推迟到高峰结束
                 next_time = next_time.replace(hour=end, minute=0, second=0)
@@ -372,8 +327,13 @@ class XhsScheduler:
         """
         start_time = time.time()
 
+        # 生成唯一的执行ID
+        execution_id = f"exec_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        print(f"[scheduler] 执行ID: {execution_id}")
+
         result = {
             "keyword": keyword,
+            "execution_id": execution_id,
             "posts_found": 0,
             "posts_inserted": 0,
             "posts_skipped": 0,
@@ -386,9 +346,11 @@ class XhsScheduler:
 
         try:
             print(f"[scheduler] 开始搜索: {keyword}")
+            self.db.log_execution_message(execution_id, keyword, 'info', f'开始搜索关键词: {keyword}')
 
             # 标记任务开始
             self.task_queue.mark_task_running(keyword)
+            self.db.log_execution_message(execution_id, keyword, 'info', '任务开始执行')
 
             # 高峰时段增加延迟
             delay_factor = get_peak_delay_factor()
@@ -408,6 +370,7 @@ class XhsScheduler:
             if not search_result.get("success", False):
                 result["error"] = search_result.get("error", "搜索失败")
                 print(f"[scheduler] 搜索失败: {result['error']}")
+                self.db.log_execution_message(execution_id, keyword, 'error', f'搜索失败: {result["error"]}')
 
                 # 标记失败（用于重试机制）
                 self.task_queue.mark_task_failed(keyword, result["error"])
@@ -418,6 +381,7 @@ class XhsScheduler:
             result["posts_found"] = search_result.get("posts_found", len(notes))
             posts_skipped_in_search = search_result.get("posts_skipped", 0)
             print(f"[scheduler] 搜索到 {result['posts_found']} 条帖子，已跳过 {posts_skipped_in_search} 条重复")
+            self.db.log_execution_message(execution_id, keyword, 'success', f'搜索到 {result["posts_found"]} 条帖子，跳过 {posts_skipped_in_search} 条重复')
 
             # 处理每个帖子（已在search_and_detail中去重，这里直接处理）
             for note in notes:
@@ -441,9 +405,11 @@ class XhsScheduler:
                 # 存入数据库
                 if self.db.insert_note(note, keyword, "general"):
                     result["posts_inserted"] += 1
+                    self.db.log_execution_message(execution_id, keyword, 'success', f'入库成功: {note_id}')
                     print(f"[scheduler] 入库成功: {note_id}")
                 else:
                     result["posts_skipped"] += 1
+                    self.db.log_execution_message(execution_id, keyword, 'info', f'跳过重复: {note_id}')
 
             # 更新上次搜索时间
             self.db.update_last_search_time(keyword)
@@ -545,6 +511,7 @@ class XhsScheduler:
                 images_failed=result["images_failed"],
                 duration_seconds=result["duration_seconds"],
                 error_message=result["error"],
+                execution_id=result["execution_id"],
             )
 
             print(f"[scheduler] 搜索完成: {keyword}")

@@ -59,7 +59,6 @@ class XhsSearchToDB:
         # 默认启用图片上传，初始化图片处理器
         if upload_images and ImageProcessor:
             try:
-                from image_processor import ImageProcessorLogger
                 logger = ImageProcessorLogger()
                 self.image_uploader = ImageProcessor(logger=logger)
                 print("[main] 图片上传功能已启用（新版处理器）")
@@ -221,7 +220,7 @@ def main():
     # search-detail 命令
     sub = subparsers.add_parser("search-detail", help="搜索获取详情并入库")
     sub.add_argument("keyword", help="搜索关键词")
-    sub.add_argument("--limit", "-n", type=int, default=5, help="结果数量")
+    sub.add_argument("--limit", "-n", type=int, default=2, help="结果数量")
     sub.add_argument("--sort", "-s", default="general", choices=["general", "popular", "latest"], help="排序方式")
     sub.add_argument("--delay", "-d", type=float, default=2.0, help="请求间隔（秒）")
     sub.add_argument("--upload-images", "-u", action="store_true", help="上传图片到 Lsky Pro 图床")

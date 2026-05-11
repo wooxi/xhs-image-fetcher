@@ -1,25 +1,16 @@
 import mysql from 'mysql2/promise'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
+import { getPool, formatDateTime } from '../../utils/db'
 
 // 写入单条执行日志到数据库
 const writeLogToDb = async (executionId: string, keyword: string, logType: string, message: string) => {
   try {
-    const conn = await mysql.createConnection(dbConfig)
-    await conn.execute(
+    const pool = getPool()
+    await pool.execute(
       `INSERT INTO execution_logs (execution_id, keyword, log_type, message) VALUES (?, ?, ?, ?)`,
       [executionId, keyword, logType, message]
     )
-    await conn.end()
   } catch (error) {
     console.error('[realtime] 写入日志失败:', error)
   }
@@ -32,24 +23,24 @@ const writeSearchResultToDb = async (
   postsFound: number,
   postsInserted: number,
   postsSkipped: number,
+  imagesFound: number,
   imagesUploaded: number,
   imagesFailed: number,
   durationSeconds: number,
   errorMessage: string | null
 ) => {
   try {
-    const conn = await mysql.createConnection(dbConfig)
-    await conn.execute(
+    const pool = getPool()
+    await pool.execute(
       `INSERT INTO search_logs (
         execution_id, keyword, posts_found, posts_inserted, posts_skipped,
         images_found, images_uploaded, images_failed,
         duration_seconds, error_message
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [executionId, keyword, postsFound, postsInserted, postsSkipped,
-       imagesUploaded + imagesFailed, imagesUploaded, imagesFailed,
+       imagesFound, imagesUploaded, imagesFailed,
        durationSeconds, errorMessage]
     )
-    await conn.end()
     console.log('[realtime] 已写入搜索结果统计:', executionId)
   } catch (error) {
     console.error('[realtime] 写入搜索结果失败:', error)
@@ -57,6 +48,9 @@ const writeSearchResultToDb = async (
 }
 
 // 搜索任务状态存储（内存）
+const MAX_TASKS = 200  // 限制最大任务数量，防止内存无限增长
+const TASK_CLEANUP_AGE = 3600000 // 1小时
+
 const searchTasks: Map<string, {
   keyword: string
   limit: number
@@ -68,27 +62,59 @@ const searchTasks: Map<string, {
   postsFound: number
   postsInserted: number
   postsSkipped: number
+  imagesFound: number
   imagesUploaded: number
   imagesFailed: number
 }> = new Map()
 
-// 清理超过1小时的已完成任务
+// 清理超过1小时的已完成任务，并限制总任务数量
 const cleanupOldTasks = () => {
   const now = new Date()
   for (const [id, task] of searchTasks.entries()) {
     if (task.status !== 'running' && task.endTime) {
       const age = now.getTime() - new Date(task.endTime).getTime()
-      if (age > 3600000) { // 1小时
+      if (age > TASK_CLEANUP_AGE) {
         searchTasks.delete(id)
       }
     }
   }
+  // 如果任务数量超过上限，删除最早的已完成任务
+  if (searchTasks.size > MAX_TASKS) {
+    const completedTasks = Array.from(searchTasks.entries())
+      .filter(([_, t]) => t.status !== 'running')
+      .sort((a, b) => new Date(a[1].startTime).getTime() - new Date(b[1].startTime).getTime())
+    const toRemove = searchTasks.size - MAX_TASKS
+    for (let i = 0; i < toRemove && i < completedTasks.length; i++) {
+      searchTasks.delete(completedTasks[i][0])
+    }
+  }
+}
+
+// 清理残留的Python搜索子进程
+const cleanupOrphanProcesses = () => {
+  try {
+    const { execSync } = require('child_process')
+    const result = execSync('ps aux | grep "[m]ain.py search-detail" | awk \'{print $2}\'', { encoding: 'utf-8' })
+    const pids = result.trim().split('\n').filter(Boolean)
+    if (pids.length > 0) {
+      console.log(`[realtime] 清理 ${pids.length} 个残留Python子进程`)
+      for (const pid of pids) {
+        try { execSync(`kill -9 ${pid}`) } catch {}
+      }
+    }
+  } catch {}
 }
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const action = query.action as string || 'status'
   const keyword = query.keyword as string
+
+  // 清理旧任务和残留的Python子进程
+  if (action === 'status' && !globalThis.__orphanCleanupRan) {
+    globalThis.__orphanCleanupRan = true
+    cleanupOrphanProcesses()
+  }
 
   // 清理旧任务
   cleanupOldTasks()
@@ -129,7 +155,7 @@ export default defineEventHandler(async (event) => {
 
   // 启动搜索任务
   if (action === 'start' && keyword) {
-    const limit = Number(query.limit) || 5
+    const limit = Number(query.limit) || 2
     const uploadImages = query.upload === 'true'
     const taskId = `search_${Date.now()}_${keyword}`
     const executionId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -145,6 +171,7 @@ export default defineEventHandler(async (event) => {
       postsFound: 0,
       postsInserted: 0,
       postsSkipped: 0,
+      imagesFound: 0,
       imagesUploaded: 0,
       imagesFailed: 0
     }
@@ -154,13 +181,14 @@ export default defineEventHandler(async (event) => {
     writeLogToDb(executionId, keyword, 'info', `开始搜索关键词: ${keyword}, 数量: ${limit}`)
 
     // 启动后台搜索进程（使用venv中的Python）
-    const scriptPath = '/xhs-project/backend/main.py'
-    const pythonPath = '/xhs-project/backend/venv/bin/python'
+    const backendDir = process.env.BACKEND_DIR || '/xhs-project/backend'
+    const pythonPath = process.env.PYTHON_PATH || `${backendDir}/venv/bin/python`
+    const scriptPath = `${backendDir}/main.py`
     // 默认上传图片到图床
     const args = ['search-detail', keyword, '--limit', String(limit), '--upload-images']
 
     const child = spawn(pythonPath, [scriptPath, ...args], {
-      cwd: '/xhs-project/backend',
+      cwd: backendDir,
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
       stdio: ['ignore', 'pipe', 'pipe']
     })
@@ -243,7 +271,18 @@ export default defineEventHandler(async (event) => {
           if (match) {
             const current = Number(match[1])
             const total = Number(match[2])
-            // 更新进度
+            // 更新发现的图片总数（取最大值）
+            if (total > task.imagesFound) {
+              task.imagesFound = total
+            }
+          }
+        }
+        // 解析帖子图片总数
+        if (cleanLine.includes('共') && cleanLine.includes('张图片')) {
+          const match = cleanLine.match(/共\s*(\d+)\s*张图片/)
+          if (match) {
+            const total = Number(match[1])
+            task.imagesFound += total
           }
         }
         if (cleanLine.includes('上传成功')) {
@@ -314,16 +353,15 @@ export default defineEventHandler(async (event) => {
       task.status = code === 0 ? 'completed' : 'failed'
       task.endTime = new Date()
 
-      // 计算耗时
       const durationSeconds = Math.round((task.endTime.getTime() - task.startTime.getTime()) / 1000)
 
-      // 写入搜索结果统计到数据库
       writeSearchResultToDb(
         executionId,
         keyword,
         task.postsFound,
         task.postsInserted,
         task.postsSkipped,
+        task.imagesFound,
         task.imagesUploaded,
         task.imagesFailed,
         durationSeconds,
@@ -331,10 +369,8 @@ export default defineEventHandler(async (event) => {
       )
 
       // 更新数据库关键词的最后搜索时间
-      mysql.createConnection(dbConfig).then(conn => {
-        conn.execute('UPDATE keywords SET last_search_time = NOW() WHERE keyword = ?', [keyword])
-        conn.end()
-      }).catch(() => {})
+      getPool().execute('UPDATE keywords SET last_search_time = NOW() WHERE keyword = ?', [keyword])
+        .catch(() => {})
     })
 
     child.unref()

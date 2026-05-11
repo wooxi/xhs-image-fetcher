@@ -10,6 +10,7 @@
 所有配置支持环境变量覆盖。
 """
 
+import json
 import os
 from typing import List, Tuple
 
@@ -80,7 +81,7 @@ class SchedulerConfig:
     DETAIL_DELAY_MAX = float(os.getenv("DETAIL_DELAY_MAX", "5"))
 
     # 搜索限制
-    SEARCH_LIMIT = int(os.getenv("SEARCH_LIMIT", "10"))  # 每次搜索帖子数
+    SEARCH_LIMIT = int(os.getenv("SEARCH_LIMIT", "2"))  # 每次搜索帖子数
     IMAGE_UPLOAD_DELAY = float(os.getenv("IMAGE_UPLOAD_DELAY", "0.5"))  # 图片上传间隔
 
     # ==================== 高峰时段规避 ====================
@@ -100,8 +101,6 @@ class SchedulerConfig:
             return pairs
         except Exception:
             return [(12, 14), (18, 22)]  # 默认值
-
-    PEAK_HOURS = property(get_peak_hours)
 
     # 高峰时段延迟倍数
     PEAK_DELAY_MULTIPLIER = float(os.getenv("PEAK_DELAY_MULTIPLIER", "2.5"))
@@ -231,7 +230,6 @@ if __name__ == "__main__":
     print("=== 配置模块测试 ===")
     print(json.dumps(get_all_config(), indent=2, ensure_ascii=False))
 
-    import json
     from datetime import datetime
 
     # 测试高峰时段检测

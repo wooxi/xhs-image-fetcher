@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise'
+import { getPool, formatDateTime } from '../utils/db'
 
 interface Keyword {
   id: number
@@ -7,38 +7,38 @@ interface Keyword {
   auto_search: boolean
   search_interval: number
   last_search_time: string | null
+  priority: string
+  retry_count: number
+  last_error: string | null
+  next_search_time: string | null
   created_at: string
   updated_at: string
 }
 
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
+export default defineEventHandler(async () => {
+  const pool = getPool()
 
-export default defineEventHandler(async (event) => {
-  const connection = await mysql.createConnection(dbConfig)
-  
   try {
     const sql = `
       SELECT id, keyword, status, auto_search, search_interval,
-             last_search_time, created_at, updated_at
+             last_search_time, priority, retry_count, last_error,
+             next_search_time, created_at, updated_at
       FROM keywords
-      ORDER BY created_at DESC
+      ORDER BY priority DESC, created_at DESC
     `
-    
-    const [rows] = await connection.execute(sql)
-    
-    // 转换 boolean 字段
+
+    const [rows] = await pool.query(sql)
+
     const keywords: Keyword[] = (rows as any[]).map(row => ({
       ...row,
-      auto_search: Boolean(row.auto_search)
+      auto_search: Boolean(row.auto_search),
+      last_search_time: formatDateTime(row.last_search_time),
+      next_search_time: formatDateTime(row.next_search_time),
+      created_at: formatDateTime(row.created_at),
+      updated_at: formatDateTime(row.updated_at),
+      search_interval: parseFloat(row.search_interval) || 0
     }))
-    
+
     return {
       success: true,
       keywords
@@ -48,7 +48,5 @@ export default defineEventHandler(async (event) => {
       success: false,
       error: error.message || '获取搜索词列表失败'
     }
-  } finally {
-    await connection.end()
   }
 })

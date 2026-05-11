@@ -50,14 +50,18 @@ except ImportError:
     print("[xhs_cdp] 警告: 无法导入 human_behavior 模块，人类行为模拟功能不可用")
     HUMAN_BEHAVIOR_ENABLED = False
 
+# 导入统一配置
+try:
+    from config import CDPConfig, XHS_HOME_URL, SEARCH_BASE_URL
+    CDP_HOST = CDPConfig.HOST
+    CDP_PORT = CDPConfig.PORT
+except ImportError:
+    CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
+    CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
+    SEARCH_BASE_URL = "https://www.xiaohongshu.com/search_result"
+    XHS_HOME_URL = "https://www.xiaohongshu.com"
+
 OUTPUT_DIR = Path("/tmp/xhs_search")
-
-CDP_HOST = os.getenv("CDP_HOST", "192.168.100.4")
-CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
-
-# URL 常量
-SEARCH_BASE_URL = "https://www.xiaohongshu.com/search_result"
-XHS_HOME_URL = "https://www.xiaohongshu.com"
 
 
 class CDPError(Exception):
@@ -964,7 +968,7 @@ def get_note_detail(note_url: str, xsec_token: str = "") -> dict:
         client.disconnect()
 
 
-def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by: str = "general", db: Any = None, skip_existing: bool = True) -> dict:
+def search_and_detail(keyword: str, limit: int = 2, delay: float = 2.0, sort_by: str = "general", db: Any = None, skip_existing: bool = True) -> dict:
     """搜索并批量获取笔记详情（智能补充搜索 + 随机排序）。
 
     Args:
@@ -1001,8 +1005,7 @@ def search_and_detail(keyword: str, limit: int = 5, delay: float = 2.0, sort_by:
         if sort_by == "random":
             current_sort = random.choice(sort_options)
         else:
-            # 为了获取更多不同结果，每批次随机切换排序
-            current_sort = random.choice(sort_options)
+            current_sort = sort_by
 
         print(f"[xhs_cdp] 搜索批次 #{batch_count}: 目标 {limit} 个新帖子，当前已有 {posts_new} 个，还需 {limit - posts_new} 个，排序: {current_sort}")
 
@@ -1151,7 +1154,7 @@ def main():
     # search-detail 命令
     sub = subparsers.add_parser("search-detail", help="搜索并获取详情")
     sub.add_argument("keyword", help="搜索关键词")
-    sub.add_argument("--limit", "-n", type=int, default=5, help="结果数量")
+    sub.add_argument("--limit", "-n", type=int, default=2, help="结果数量")
     sub.add_argument("--sort", "-s", default="general", choices=["general", "popular", "latest"], help="排序方式")
     sub.add_argument("--delay", "-d", type=float, default=2.0, help="请求间隔（秒）")
     sub.set_defaults(func=lambda a: print(json.dumps(search_and_detail(a.keyword, a.limit, a.delay, a.sort), ensure_ascii=False, indent=2)))
