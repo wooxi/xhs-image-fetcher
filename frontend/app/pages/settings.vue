@@ -39,28 +39,12 @@
           </button>
         </div>
 
-        <!-- 调度器控制 -->
+        <!-- 调度器状态 -->
         <div class="flex items-center gap-2">
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" :class="schedulerStatus?.running ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'">
-            <div :class="schedulerStatus?.running ? 'bg-green-500 animate-pulse' : 'bg-gray-300'" class="w-2 h-2 rounded-full"></div>
-            {{ schedulerStatus?.running ? '运行中' : '未启动' }}
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-50 text-green-700" title="调度器由 start.sh 管理，自动启动并始终运行">
+            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            运行中
           </div>
-          <button
-            v-if="schedulerStatus?.running"
-            @click="stopScheduler"
-            :disabled="schedulerLoading"
-            class="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-all font-medium"
-          >
-            停止
-          </button>
-          <button
-            v-else
-            @click="startScheduler"
-            :disabled="schedulerLoading"
-            class="px-3 py-1.5 text-xs text-green-600 hover:bg-green-50 rounded-lg transition-all font-medium"
-          >
-            启动
-          </button>
           <button
             v-show="activeTab === 'keywords'"
             @click="showAddModal = true"
@@ -77,7 +61,7 @@
 
     <!-- 内容区域 -->
     <main class="max-w-7xl mx-auto px-4 py-5">
-      <!-- 搜索词 Tab -->
+      <!-- 关键词 Tab -->
       <div v-show="activeTab === 'keywords'">
         <!-- 加载状态 -->
         <div v-if="pending" class="flex justify-center py-20">
@@ -100,8 +84,8 @@
           </button>
         </div>
 
-        <!-- 搜索词列表 -->
-        <div v-else class="grid gap-3 grid-cols-1 md:grid-cols-2">
+        <!-- 关键词列表 -->
+        <div v-else class="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="kw in keywords"
             :key="kw.id"
@@ -109,9 +93,9 @@
           >
             <!-- 关键词头部 -->
             <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" :class="kw.status === 'active' ? 'bg-green-100' : 'bg-gray-100'">
-                  <svg class="w-4 h-4" :class="kw.status === 'active' ? 'text-green-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" :class="kw.auto_search ? 'bg-green-100' : 'bg-gray-100'">
+                  <svg class="w-4 h-4" :class="kw.auto_search ? 'text-green-600' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                 </div>
@@ -167,16 +151,6 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                     {{ searchingKeywords.includes(kw.keyword) ? '搜索中...' : '立即搜索' }}
-                  </button>
-                  <hr class="my-1">
-                  <button
-                    @click="confirmDelete(kw)"
-                    class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                    删除
                   </button>
                 </div>
               </div>
@@ -386,61 +360,6 @@
       </div>
     </div>
 
-    <!-- 删除确认模态框 -->
-    <div
-      v-if="deleteTarget"
-      class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
-      @click.self="deleteTarget = null"
-    >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 text-center">
-        <svg class="w-10 h-10 mx-auto text-red-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.542 0 2.282-1.284 1.636-2.286l-6.8-10.284c-.774-1.036-2.698-1.036-3.472 0l-6.8 10.284c-.646 1.002.094 2.286 1.636 2.286z"/>
-        </svg>
-        <h2 class="text-base font-bold text-gray-800 mb-1">确认删除</h2>
-        <p class="text-sm text-gray-500 mb-4">确定要删除关键词 "{{ deleteTarget.keyword }}" 吗？</p>
-        <div class="flex justify-center gap-3">
-          <button @click="deleteTarget = null" class="px-4 py-1.5 text-sm text-gray-500 hover:text-gray-700 transition">取消</button>
-          <button @click="deleteKeyword" class="px-4 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition">删除</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 日志详情模态框 -->
-    <div
-      v-if="logDetail.show"
-      class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center"
-      @click.self="logDetail.show = false"
-    >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <div class="px-5 py-3 border-b flex items-center justify-between bg-gray-50">
-          <div class="flex items-center gap-2">
-            <span class="px-2.5 py-0.5 bg-xhs-red/10 text-xhs-red rounded-md text-xs font-semibold">{{ logDetail.summary?.keyword }}</span>
-            <span class="text-xs text-gray-400">{{ logDetail.logs?.length || 0 }} 条日志</span>
-          </div>
-          <button @click="logDetail.show = false" class="text-gray-400 hover:text-gray-600">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div v-if="logDetail.summary" class="px-5 py-3 border-b bg-gray-50">
-          <div class="grid grid-cols-5 gap-3 text-center">
-            <div><span class="text-sm font-bold text-gray-700">{{ logDetail.summary.posts_found }}</span><span class="text-[10px] text-gray-400 block">发现</span></div>
-            <div><span class="text-sm font-bold text-green-600">{{ logDetail.summary.posts_inserted }}</span><span class="text-[10px] text-gray-400 block">入库</span></div>
-            <div><span class="text-sm font-bold text-blue-600">{{ logDetail.summary.images_uploaded }}</span><span class="text-[10px] text-gray-400 block">上传</span></div>
-            <div><span class="text-sm font-bold text-red-500">{{ logDetail.summary.images_failed }}</span><span class="text-[10px] text-gray-400 block">失败</span></div>
-            <div><span class="text-sm font-bold text-orange-600">{{ logDetail.summary.duration_seconds }}s</span><span class="text-[10px] text-gray-400 block">耗时</span></div>
-          </div>
-          <div v-if="logDetail.summary.error_message" class="mt-2 p-2 bg-red-50 rounded text-red-600 text-xs">{{ logDetail.summary.error_message }}</div>
-        </div>
-        <div v-if="logDetail.logs?.length > 0" class="flex-1 overflow-y-auto px-4 py-3 bg-gray-900 text-gray-100 font-mono text-xs">
-          <div v-for="(log, i) in logDetail.logs" :key="log.id || i" class="py-0.5" :class="{ 'text-green-400': log.log_type === 'success', 'text-red-400': log.log_type === 'error', 'text-blue-300': log.log_type === 'info', 'text-yellow-300': log.log_type === 'image' }">
-            <span class="text-gray-500 text-[10px]">{{ formatLogDetailTime(log.created_at) }}</span>
-            <span class="ml-2">{{ log.message }}</span>
-          </div>
-        </div>
-        <div v-else-if="!logDetail.loading" class="flex-1 flex items-center justify-center text-gray-400 text-sm">暂无详细日志</div>
-      </div>
-    </div>
-
     <!-- 提示消息 -->
     <div
       v-if="toast.show"
@@ -509,50 +428,14 @@ const toggleLogDetail = async (logId: number) => {
   }
 }
 
-// 调度器状态
-const schedulerStatus = ref<{ running: boolean; pid?: number; uptime?: number } | null>(null)
-const schedulerLoading = ref(false)
-const fetchSchedulerStatus = async () => {
-  try {
-    const res = await $fetch('/api/scheduler/status')
-    schedulerStatus.value = res
-  } catch {
-    schedulerStatus.value = { running: false }
-  }
-}
-fetchSchedulerStatus()
-setInterval(fetchSchedulerStatus, 30000)
+// Toast
+const toast = ref({ show: false, message: '', type: 'success' as 'success' | 'error' })
 
-const startScheduler = async () => {
-  schedulerLoading.value = true
-  try {
-    const res = await $fetch('/api/scheduler/start', { method: 'POST' })
-    if (res.success) {
-      showToast('调度器已启动', 'success')
-      fetchSchedulerStatus()
-    } else {
-      showToast(res.error || '启动失败', 'error')
-    }
-  } catch (e: any) {
-    showToast(e.message || '启动失败', 'error')
-  }
-  schedulerLoading.value = false
-}
-
-const stopScheduler = async () => {
-  schedulerLoading.value = true
-  try {
-    const res = await $fetch('/api/scheduler/stop', { method: 'POST' })
-    if (res.success) {
-      showToast('调度器已停止', 'success')
-      fetchSchedulerStatus()
-    } else {
-      showToast(res.error || '停止失败', 'error')
-    }
-  } catch (e: any) {
-    showToast(e.message || '停止失败', 'error')
-  }
-  schedulerLoading.value = false
+const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  toast.value = { show: true, message, type }
+  setTimeout(() => {
+    toast.value.show = false
+  }, 3000)
 }
 
 // 添加关键词
@@ -599,33 +482,6 @@ const addKeyword = async () => {
     showToast(e.message || '添加失败', 'error')
   }
   adding.value = false
-}
-
-// 删除关键词
-const deleteTarget = ref<Keyword | null>(null)
-
-const confirmDelete = (kw: Keyword) => {
-  deleteTarget.value = kw
-  actionMenuOpen.value[kw.id] = false
-}
-
-const deleteKeyword = async () => {
-  if (!deleteTarget.value) return
-  try {
-    const res = await $fetch('/api/keywords', {
-      method: 'DELETE',
-      body: { keyword: deleteTarget.value.keyword }
-    })
-    if (res.success) {
-      showToast('删除成功', 'success')
-      deleteTarget.value = null
-      refresh()
-    } else {
-      showToast(res.error || '删除失败', 'error')
-    }
-  } catch (e: any) {
-    showToast(e.message || '删除失败', 'error')
-  }
 }
 
 // 切换自动搜索
@@ -681,12 +537,10 @@ const triggerSearch = async (kw: Keyword) => {
 const actionMenuOpen = ref<Record<number, boolean>>({})
 
 const openActionMenu = (kw: Keyword) => {
-  // 关闭其他菜单
   actionMenuOpen.value = {}
   actionMenuOpen.value[kw.id] = !actionMenuOpen.value[kw.id]
 }
 
-// 点击外部关闭菜单
 const closeActionMenus = () => {
   actionMenuOpen.value = {}
 }
@@ -720,7 +574,7 @@ const formatLogTime = (time: string) => {
   const now = new Date()
   const diff = now.getTime() - d.getTime()
   const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-  if (diff < 60000) return `刚刚`
+  if (diff < 60000) return '刚刚'
   if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
   return `${dateStr}`
@@ -730,16 +584,6 @@ const formatLogDetailTime = (time: string) => {
   if (!time) return ''
   const d = new Date(time)
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
-}
-
-// Toast
-const toast = ref({ show: false, message: '', type: 'success' as 'success' | 'error' })
-
-const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-  toast.value = { show: true, message, type }
-  setTimeout(() => {
-    toast.value.show = false
-  }, 3000)
 }
 
 // 日志详情模态框
@@ -851,7 +695,6 @@ onUnmounted(() => {
   stopTaskPolling()
 })
 
-// 点击外部关闭操作菜单
 onMounted(() => {
   document.addEventListener('click', closeActionMenus)
 })
@@ -861,7 +704,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 阻止点击事件穿透到内部元素时关闭菜单 */
 button, a, input, select {
   cursor: pointer;
 }
