@@ -1,7 +1,7 @@
 // 调度器状态 API
 // 返回当前调度器的运行状态、任务队列等信息
 
-import mysql from 'mysql2/promise'
+import { getPool, getPeakHours } from '../../utils/db'
 
 interface SchedulerStatus {
   running: boolean
@@ -29,46 +29,30 @@ interface SchedulerStatus {
 }
 
 export default defineEventHandler(async (event): Promise<SchedulerStatus> => {
-  // 获取数据库配置
-  const config = useRuntimeConfig()
-
-  const dbConfig = {
-    host: config.dbHost || process.env.DB_HOST || 'localhost',
-    port: parseInt(config.dbPort || process.env.DB_PORT || '3306'),
-    user: config.dbUser || process.env.DB_USER || 'root',
-    password: config.dbPassword || process.env.DB_PASSWORD || '',
-    database: config.dbDatabase || process.env.DB_DATABASE || 'xhs_notes'
-  }
-
   try {
-    const conn = await mysql.createConnection(dbConfig)
+    const pool = getPool()
 
-    // 获取自动搜索的关键词（任务队列）
-    const [keywords] = await conn.execute(`
+    const [keywords] = await pool.execute(`
       SELECT keyword, status, auto_search, search_interval,
              next_search_time, last_search_time, retry_count, priority
       FROM keywords
       WHERE auto_search = TRUE
-      ORDER BY priority DESC, next_search_time ASC
+      ORDER BY FIELD(priority, 'high', 'normal', 'low'), next_search_time ASC
     `)
 
-    // 获取最近5条执行日志
-    const [logs] = await conn.execute(`
+    const [logs] = await pool.execute(`
       SELECT keyword, posts_found, posts_inserted, duration_seconds, created_at, error_message
       FROM search_logs
       ORDER BY created_at DESC
       LIMIT 5
     `)
 
-    await conn.end()
-
-    // 计算高峰时段
     const currentHour = new Date().getHours()
-    const peakHours: Array<[number, number]> = [[12, 14], [18, 22]]
+    const peakHours = getPeakHours()
     const peakTimeActive = peakHours.some(([start, end]) => currentHour >= start && currentHour < end)
 
     return {
-      running: true, // 假设调度器在运行（实际需要从进程状态获取）
+      running: true,
       peakTimeActive,
       currentHour,
       peakHours,
@@ -90,17 +74,16 @@ export default defineEventHandler(async (event): Promise<SchedulerStatus> => {
         created_at: l.created_at ? l.created_at.toISOString() : '',
         error_message: l.error_message || null
       }))
-    }
 
+    }
   } catch (error: any) {
     console.error('[scheduler/status] 数据库查询失败:', error)
 
-    // 返回默认状态
     return {
       running: false,
       peakTimeActive: false,
       currentHour: new Date().getHours(),
-      peakHours: [[12, 14], [18, 22]],
+      peakHours: getPeakHours(),
       taskQueue: [],
       recentLogs: []
     }

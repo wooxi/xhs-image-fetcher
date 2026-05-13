@@ -397,10 +397,14 @@ class XhsScheduler:
 
                 # 处理图片上传
                 if self.upload_images:
-                    note = self._process_images_for_note(note)
-                    result["images_found"] += len(note.get("images", []))
-                    result["images_uploaded"] += note.get("images_upload_success", 0)
-                    result["images_failed"] += note.get("images_upload_fail", 0)
+                    try:
+                        note = self._process_images_for_note(note)
+                        result["images_found"] += len(note.get("images", []))
+                        result["images_uploaded"] += note.get("images_upload_success", 0)
+                        result["images_failed"] += note.get("images_upload_fail", 0)
+                    except Exception as img_err:
+                        print(f"[scheduler] 图片处理失败，跳过上传: {img_err}")
+                        self.db.log_execution_message(execution_id, keyword, 'error', f'图片处理失败: {img_err}')
 
                 # 存入数据库
                 if self.db.insert_note(note, keyword, "general"):

@@ -62,6 +62,18 @@ export const getLskyConfig = () => {
   return { url: url || '', token: token || '' }
 }
 
+export const getPeakHours = (): Array<[number, number]> => {
+  const peakHoursStr = process.env.PEAK_HOURS || '12-14,18-22'
+  try {
+    return peakHoursStr.split(',').map(pair => {
+      const [start, end] = pair.trim().split('-').map(Number)
+      return [start, end] as [number, number]
+    })
+  } catch {
+    return [[12, 14], [18, 22]]
+  }
+}
+
 export const formatDateTime = (value: any): string | null => {
   if (!value) return null
   const d = value instanceof Date ? value : new Date(value)

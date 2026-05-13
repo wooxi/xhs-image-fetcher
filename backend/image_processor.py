@@ -40,8 +40,6 @@ except ImportError:
     CDP_PORT = int(os.getenv("CDP_PORT", "9224"))
     XHS_CDN_DOMAINS = ["sns-webpic-qc.xhscdn.com", "sns-webpic-cn.xhscdn.com", "sns-webpic.xhscdn.com", "xhscdn.com"]
 
-TEMP_DIR = Path(os.getenv("TEMP_DIR", "/tmp/xhs_images"))
-
 
 class ImageProcessorLogger:
     """图片处理器日志器 - 支持实时进度记录到数据库。"""
@@ -143,11 +141,7 @@ class ImageProcessor:
     def __init__(self, lsky_url: str = None, lsky_token: str = None, logger: ImageProcessorLogger = None):
         self.lsky_url = lsky_url or LSKY_PRO_URL
         self.token = lsky_token or LSKY_PRO_TOKEN
-        self.temp_dir = TEMP_DIR
         self.logger = logger or ImageProcessorLogger()
-
-        # 创建临时目录
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         # 验证 Token
         if not self.token:

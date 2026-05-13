@@ -17,7 +17,7 @@ interface Post {
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const page = Number(query.page) || 1
-  const pageSize = Number(query.pageSize) || 20
+  const pageSize = Math.min(Math.max(Number(query.pageSize) || 20, 1), 100)
   const keyword = (query.keyword as string) || ''
 
   const offset = (page - 1) * pageSize

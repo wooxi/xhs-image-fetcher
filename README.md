@@ -10,8 +10,8 @@
 ├── start.sh          # 一键启动脚本
 ├── stop.sh           # 停止脚本
 ├── README.md         # 本文档
-├── backend/          # 后端 Python FastAPI
-│   ├── main.py       # API 入口
+├── backend/          # 后端 Python 爬虫与调度器
+│   ├── main.py       # CLI 入口
 │   ├── db.py         # 数据库操作
 │   ├── scheduler.py  # 定时任务
 │   ├── upload_images.py  # 图床上传
@@ -35,8 +35,8 @@ cd /xhs-project
 
 ## 访问地址
 
-- **后端 API**: http://192.168.100.6:5020
-- **前端 Web**: http://192.168.100.6:5021
+- **后端**: CLI 工具和定时调度（Python）
+- **前端 Web**: http://192.168.100.6:5020
 
 ## 停止服务
 

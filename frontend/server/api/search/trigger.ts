@@ -1,39 +1,33 @@
-import mysql from 'mysql2/promise'
+import { getPool } from '../../utils/db'
 import { spawn } from 'child_process'
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const keyword = body.keyword?.trim()
-  const limit = body.limit ?? 10
-  
+
   if (!keyword) {
     return {
       success: false,
       error: '关键词不能为空'
     }
   }
-  
-  // 调用 xhs-db 的搜索脚本
-  // 注意：这个 API 会触发搜索脚本，可能需要较长时间
+
+  if (keyword.length > 100) {
+    return {
+      success: false,
+      error: '关键词长度不能超过100个字符'
+    }
+  }
+
+  const limit = Math.min(Math.max(Number(body.limit ?? 10), 1), 50)
+
   try {
-    // 更新上次搜索时间
-    const connection = await mysql.createConnection(dbConfig)
-    await connection.execute(
+    const pool = getPool()
+    await pool.execute(
       'UPDATE keywords SET last_search_time = NOW() WHERE keyword = ?',
       [keyword]
     )
-    await connection.end()
-    
-    // 执行搜索脚本（后台运行，使用venv中的Python）
+
     const scriptPath = '/xhs-project/backend/main.py'
     const pythonPath = '/xhs-project/backend/venv/bin/python'
     const child = spawn(pythonPath, [scriptPath, 'search', keyword, '--limit', String(limit)], {
@@ -43,7 +37,7 @@ export default defineEventHandler(async (event) => {
       stdio: 'ignore'
     })
     child.unref()
-    
+
     return {
       success: true,
       keyword,

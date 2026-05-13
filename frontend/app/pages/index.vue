@@ -41,7 +41,7 @@
         </div>
         <!-- 设置入口 -->
         <button
-          @click="$router.push('/settings')"
+          @click="$router.push('/admin')"
           class="flex items-center gap-2 px-3 sm:px-4 py-2.5 text-gray-600 hover:text-xhs-red hover:bg-gray-50 rounded-xl transition-all order-2 sm:order-3"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

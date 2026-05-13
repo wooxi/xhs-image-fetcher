@@ -1,13 +1,4 @@
-import mysql from 'mysql2/promise'
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
+import { getPool } from '../utils/db'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -22,23 +13,19 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const connection = await mysql.createConnection(dbConfig)
+  const pool = getPool()
 
   try {
-    // 如果启用自动搜索，计算并设置next_search_time
     let nextSearchTime: Date | null = null
     if (auto_search) {
-      // 下次搜索时间 = 当前时间 + 搜索间隔（小时）
       nextSearchTime = new Date(Date.now() + search_interval * 3600 * 1000)
     }
 
-    const updateSql = `
-      UPDATE keywords
-      SET auto_search = ?, search_interval = ?, status = 'active',
-          next_search_time = ?, retry_count = 0, last_error = NULL
-      WHERE keyword = ?
-    `
-    const [result] = await connection.execute(updateSql, [auto_search, search_interval, nextSearchTime, keyword])
+    const [result] = await pool.execute(
+      `UPDATE keywords SET auto_search = ?, search_interval = ?, status = 'active',
+       next_search_time = ?, retry_count = 0, last_error = NULL WHERE keyword = ?`,
+      [auto_search, search_interval, nextSearchTime, keyword]
+    )
 
     const affectedRows = (result as any).affectedRows
 
@@ -62,7 +49,5 @@ export default defineEventHandler(async (event) => {
       success: false,
       error: error.message || '更新失败'
     }
-  } finally {
-    await connection.end()
   }
 })

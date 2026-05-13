@@ -1,17 +1,7 @@
-import mysql from 'mysql2/promise'
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
+import { getPool } from '../utils/db'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event).catch(() => null)
-
   const keyword = body?.keyword?.trim()
 
   if (!keyword) {
@@ -21,14 +11,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const connection = await mysql.createConnection(dbConfig)
+  const pool = getPool()
 
   try {
-    // 删除关联的搜索日志和执行日志
-    await connection.execute('DELETE FROM search_logs WHERE keyword = ?', [keyword])
-    await connection.execute('DELETE FROM execution_logs WHERE keyword = ?', [keyword])
-    // 删除关键词
-    const [result] = await connection.execute('DELETE FROM keywords WHERE keyword = ?', [keyword])
+    await pool.execute('DELETE FROM search_logs WHERE keyword = ?', [keyword])
+    await pool.execute('DELETE FROM execution_logs WHERE keyword = ?', [keyword])
+    const [result] = await pool.execute('DELETE FROM keywords WHERE keyword = ?', [keyword])
 
     const affectedRows = (result as any).affectedRows
 
@@ -49,7 +37,5 @@ export default defineEventHandler(async (event) => {
       success: false,
       error: error.message || '删除关键词失败'
     }
-  } finally {
-    await connection.end()
   }
 })

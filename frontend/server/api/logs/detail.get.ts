@@ -1,13 +1,4 @@
-import mysql from 'mysql2/promise'
-
-// 数据库配置
-const dbConfig = {
-  host: process.env.DB_HOST || '192.168.100.4',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'ulikem00n',
-  database: process.env.DB_DATABASE || 'xhs_notes'
-}
+import { getPool } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -18,23 +9,20 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const conn = await mysql.createConnection(dbConfig)
+    const pool = getPool()
 
-    // 获取统计信息
-    const [summaryRows] = await conn.execute(
-      `SELECT * FROM search_logs WHERE execution_id = ? LIMIT 1`,
+    const [summaryRows] = await pool.execute(
+      'SELECT * FROM search_logs WHERE execution_id = ? LIMIT 1',
       [executionId]
     )
 
     const summary = summaryRows[0]
 
     if (!summary) {
-      await conn.end()
       return { success: false, error: '执行记录不存在', execution_id: executionId }
     }
 
-    // 获取详细日志
-    const [logRows] = await conn.execute(
+    const [logRows] = await pool.execute(
       `SELECT id, execution_id, keyword, log_type, message, created_at
        FROM execution_logs
        WHERE execution_id = ?
@@ -42,10 +30,7 @@ export default defineEventHandler(async (event) => {
       [executionId]
     )
 
-    await conn.end()
-
-    // 转换 datetime 为字符串
-    const logs = logRows.map(row => ({
+    const logs = (logRows as any[]).map(row => ({
       id: row.id,
       execution_id: row.execution_id,
       keyword: row.keyword,

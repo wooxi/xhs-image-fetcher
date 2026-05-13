@@ -24,7 +24,7 @@ export default defineEventHandler(async () => {
              last_search_time, priority, retry_count, last_error,
              next_search_time, created_at, updated_at
       FROM keywords
-      ORDER BY priority DESC, created_at DESC
+      ORDER BY FIELD(priority, 'high', 'normal', 'low'), created_at DESC
     `
 
     const [rows] = await pool.query(sql)

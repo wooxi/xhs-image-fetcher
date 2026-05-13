@@ -1,4 +1,4 @@
-import { createDbConnection, getLskyConfig } from '../../utils/db'
+import { getPool, getLskyConfig } from '../../utils/db'
 import fs from 'fs'
 import path from 'path'
 
@@ -124,16 +124,14 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const conn = await createDbConnection()
+    const pool = getPool()
 
-    // 获取帖子信息，包括图片路径
-    const [rows] = await conn.execute(
+    const [rows] = await pool.execute(
       'SELECT id, images FROM notes WHERE id = ?',
       [postId]
     )
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      await conn.end()
       return { success: false, error: '帖子不存在' }
     }
 
@@ -173,8 +171,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // 删除数据库记录
-    await conn.execute('DELETE FROM notes WHERE id = ?', [postId])
-    await conn.end()
+    await pool.execute('DELETE FROM notes WHERE id = ?', [postId])
 
     console.log(`[delete] 已删除帖子: ${postId}, 图床图片: ${deletedCount}成功/${failedCount}失败`)
     return {
